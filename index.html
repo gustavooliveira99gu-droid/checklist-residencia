@@ -1,0 +1,203 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Checklist Residência Médica</title>
+<link rel="stylesheet" href="style.css">
+</head>
+<body>
+
+<header class="app-header">
+  <div class="header-inner">
+    <div class="header-title">
+      <h1>Checklist Residência Médica</h1>
+      <p class="subtitle">Organize seus estudos, acompanhe seu progresso e agende no Google Agenda</p>
+    </div>
+    <div class="header-actions">
+      <button id="btn-add-tema" class="btn btn-primary">+ Adicionar tema</button>
+      <button id="btn-settings" class="btn btn-ghost" title="Configurações">⚙ Configurações</button>
+    </div>
+  </div>
+</header>
+
+<main class="container">
+
+  <!-- DASHBOARD -->
+  <section class="dashboard">
+    <div class="progress-card card">
+      <div class="progress-card-top">
+        <div>
+          <h2 id="progress-title">0 / 0 temas</h2>
+          <p id="progress-percent" class="progress-percent">0% concluído</p>
+        </div>
+      </div>
+      <div class="progress-bar-outer">
+        <div id="progress-bar-fill" class="progress-bar-fill" style="width:0%"></div>
+      </div>
+    </div>
+
+    <div class="stat-cards">
+      <div class="card stat-card">
+        <span class="stat-value" id="stat-total">0</span>
+        <span class="stat-label">Total de temas</span>
+      </div>
+      <div class="card stat-card">
+        <span class="stat-value" id="stat-done">0</span>
+        <span class="stat-label">Concluídos</span>
+      </div>
+      <div class="card stat-card">
+        <span class="stat-value" id="stat-pending">0</span>
+        <span class="stat-label">Pendentes</span>
+      </div>
+      <div class="card stat-card">
+        <span class="stat-value" id="stat-scheduled">0</span>
+        <span class="stat-label">Programados</span>
+      </div>
+    </div>
+  </section>
+
+  <!-- PRÓXIMOS ESTUDOS -->
+  <section class="upcoming-section">
+    <h2 class="section-title">Próximos estudos</h2>
+    <div id="upcoming-list" class="upcoming-list">
+      <p class="empty-msg">Nenhum estudo programado.</p>
+    </div>
+  </section>
+
+  <!-- BUSCA E FILTROS -->
+  <section class="toolbar">
+    <input type="text" id="search-input" class="search-input" placeholder="Buscar tema...">
+    <div class="filter-buttons" id="status-filters">
+      <button class="filter-btn active" data-filter="todos">Todos</button>
+      <button class="filter-btn" data-filter="pendentes">Pendentes</button>
+      <button class="filter-btn" data-filter="concluidos">Concluídos</button>
+      <button class="filter-btn" data-filter="programados">Programados</button>
+    </div>
+    <select id="filter-especialidade" class="select-especialidade">
+      <option value="todas">Todas as especialidades</option>
+    </select>
+  </section>
+
+  <!-- CHECKLIST -->
+  <section id="checklist" class="checklist"></section>
+
+</main>
+
+<footer class="app-footer">
+  <p>Seus dados ficam salvos apenas neste navegador (localStorage). Use o backup em <strong>Configurações</strong> para não perder nada.</p>
+</footer>
+
+<!-- MODAL: Adicionar / Editar Tema -->
+<div id="modal-tema" class="modal-overlay hidden">
+  <div class="modal">
+    <h3 id="modal-tema-title">Adicionar tema</h3>
+    <form id="form-tema">
+      <input type="hidden" id="tema-id">
+
+      <label class="field-label">Especialidade</label>
+      <select id="tema-especialidade" class="field-input"></select>
+
+      <div id="nova-especialidade-wrap" class="hidden">
+        <label class="field-label">Nome da nova especialidade</label>
+        <input type="text" id="nova-especialidade-nome" class="field-input" placeholder="Ex: Ginecologia">
+      </div>
+
+      <label class="field-label">Nome do tema</label>
+      <input type="text" id="tema-nome" class="field-input" placeholder="Ex: Hipertensão arterial" required>
+
+      <label class="field-label">Data de estudo (opcional)</label>
+      <input type="date" id="tema-data" class="field-input">
+
+      <div class="modal-actions">
+        <button type="button" class="btn btn-ghost" id="btn-cancel-tema">Cancelar</button>
+        <button type="submit" class="btn btn-primary">Salvar</button>
+      </div>
+    </form>
+  </div>
+</div>
+
+<!-- MODAL: Agendar (Google Agenda) -->
+<div id="modal-agendar" class="modal-overlay hidden">
+  <div class="modal">
+    <h3>Agendar estudo</h3>
+    <p class="modal-tema-nome" id="agendar-tema-nome"></p>
+    <form id="form-agendar">
+      <input type="hidden" id="agendar-tema-id">
+
+      <label class="field-label">Data</label>
+      <input type="date" id="agendar-data" class="field-input" required>
+
+      <label class="field-label">Horário inicial</label>
+      <input type="time" id="agendar-horario" class="field-input" required>
+
+      <label class="field-label">Duração (minutos)</label>
+      <select id="agendar-duracao" class="field-input">
+        <option value="30">30 min</option>
+        <option value="60" selected>60 min</option>
+        <option value="90">90 min</option>
+        <option value="120">120 min</option>
+      </select>
+
+      <p id="agendar-status" class="modal-status"></p>
+
+      <div class="modal-actions modal-actions-split">
+        <button type="button" class="btn btn-danger-ghost hidden" id="btn-remove-agendamento">Remover agendamento</button>
+        <div class="modal-actions-right">
+          <button type="button" class="btn btn-ghost" id="btn-cancel-agendar">Cancelar</button>
+          <button type="submit" class="btn btn-primary" id="btn-save-agendar">Salvar e adicionar ao Google Agenda</button>
+        </div>
+      </div>
+    </form>
+  </div>
+</div>
+
+<!-- MODAL: Confirmar Exclusão -->
+<div id="modal-confirm" class="modal-overlay hidden">
+  <div class="modal modal-small">
+    <h3>Tem certeza que deseja excluir este tema?</h3>
+    <p class="modal-tema-nome" id="confirm-tema-nome"></p>
+    <div class="modal-actions">
+      <button type="button" class="btn btn-ghost" id="btn-cancel-confirm">Cancelar</button>
+      <button type="button" class="btn btn-danger" id="btn-confirm-delete">Excluir</button>
+    </div>
+  </div>
+</div>
+
+<!-- MODAL: Configurações -->
+<div id="modal-settings" class="modal-overlay hidden">
+  <div class="modal">
+    <h3>Configurações</h3>
+
+    <div class="settings-block">
+      <h4>Backup</h4>
+      <div class="settings-row">
+        <button class="btn btn-secondary" id="btn-export">Exportar Backup</button>
+        <button class="btn btn-secondary" id="btn-import">Importar Backup</button>
+        <input type="file" id="import-file-input" accept="application/json" class="hidden">
+      </div>
+    </div>
+
+    <div class="settings-block">
+      <h4>Google Agenda</h4>
+      <p id="google-status" class="google-status">Não conectado</p>
+      <button class="btn btn-secondary" id="btn-connect-google">Conectar Google Agenda</button>
+
+      <div id="calendar-select-wrap" class="hidden">
+        <label class="field-label">Agenda selecionada</label>
+        <select id="calendar-select" class="field-input"></select>
+      </div>
+    </div>
+
+    <div class="modal-actions">
+      <button type="button" class="btn btn-primary" id="btn-close-settings">Fechar</button>
+    </div>
+  </div>
+</div>
+
+<div id="toast" class="toast hidden"></div>
+
+<script src="https://accounts.google.com/gsi/client" async defer></script>
+<script src="script.js"></script>
+</body>
+</html>
