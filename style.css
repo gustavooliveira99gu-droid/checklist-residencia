@@ -12,6 +12,8 @@
   --success-bg: #eafaf0;
   --danger: #dc2626;
   --danger-bg: #fdecec;
+  --warning: #b45309;
+  --warning-bg: #fdf3e3;
   --radius: 14px;
   --radius-sm: 9px;
   --shadow: 0 1px 2px rgba(16, 24, 40, 0.04), 0 2px 8px rgba(16, 24, 40, 0.04);
@@ -111,12 +113,81 @@ button { font-family: inherit; cursor: pointer; }
   gap: 16px;
   margin-bottom: 32px;
 }
-.progress-card { padding: 24px; }
-.progress-card-top h2 { margin: 0; font-size: 19px; font-weight: 700; }
+.dashboard-eyebrow {
+  display: block;
+  font-size: 12px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  color: var(--text-faint);
+  margin: 0 2px;
+}
+.progress-card {
+  padding: 28px 32px;
+  display: flex;
+  align-items: center;
+  gap: 32px;
+  position: relative;
+  overflow: hidden;
+}
+.progress-card::before {
+  content: "";
+  position: absolute;
+  top: -70px;
+  right: -70px;
+  width: 240px;
+  height: 240px;
+  background: radial-gradient(circle, rgba(37, 99, 235, 0.07), transparent 70%);
+  pointer-events: none;
+}
+.progress-ring-wrap {
+  position: relative;
+  width: 128px;
+  height: 128px;
+  flex-shrink: 0;
+}
+.progress-ring { transform: rotate(-90deg); }
+.progress-ring-track {
+  fill: none;
+  stroke: #eef1f5;
+  stroke-width: 10;
+}
+.progress-ring-fill {
+  fill: none;
+  stroke: url(#progressGradient);
+  stroke-width: 10;
+  stroke-linecap: round;
+  transition: stroke-dashoffset 0.7s cubic-bezier(0.65, 0, 0.35, 1);
+}
+.progress-ring-center {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+}
+.progress-ring-pct {
+  font-size: 25px;
+  font-weight: 800;
+  color: var(--primary);
+  font-variant-numeric: tabular-nums;
+  line-height: 1;
+}
+.progress-ring-caption {
+  font-size: 10.5px;
+  color: var(--text-faint);
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  margin-top: 4px;
+}
+.progress-card-info { flex: 1 1 auto; min-width: 0; }
+.progress-card-info h2 { margin: 0; font-size: 20px; font-weight: 700; }
 .progress-percent { margin: 4px 0 0; color: var(--text-muted); font-size: 14px; font-weight: 600; }
 .progress-bar-outer {
-  margin-top: 16px;
-  height: 10px;
+  margin-top: 18px;
+  height: 6px;
   border-radius: 999px;
   background: #eef1f5;
   overflow: hidden;
@@ -125,7 +196,7 @@ button { font-family: inherit; cursor: pointer; }
   height: 100%;
   background: linear-gradient(90deg, var(--accent), var(--primary));
   border-radius: 999px;
-  transition: width 0.3s ease;
+  transition: width 0.5s cubic-bezier(0.65, 0, 0.35, 1);
 }
 
 .stat-cards {
@@ -137,9 +208,34 @@ button { font-family: inherit; cursor: pointer; }
   padding: 20px;
   display: flex;
   flex-direction: column;
-  gap: 4px;
+  gap: 8px;
+  transition: transform 0.2s ease, box-shadow 0.2s ease, border-color 0.2s ease;
 }
-.stat-value { font-size: 26px; font-weight: 800; color: var(--primary); }
+.stat-card:hover {
+  transform: translateY(-3px);
+  box-shadow: var(--shadow-md);
+  border-color: transparent;
+}
+.stat-icon {
+  width: 34px;
+  height: 34px;
+  border-radius: 9px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+.stat-icon svg { width: 18px; height: 18px; }
+.stat-card--total .stat-icon { background: #eef1f5; color: var(--primary); }
+.stat-card--done .stat-icon { background: var(--success-bg); color: var(--success); }
+.stat-card--pending .stat-icon { background: var(--warning-bg); color: var(--warning); }
+.stat-card--scheduled .stat-icon { background: #eef4ff; color: var(--accent); }
+.stat-value {
+  font-size: 27px;
+  font-weight: 800;
+  color: var(--primary);
+  font-variant-numeric: tabular-nums;
+  line-height: 1.1;
+}
 .stat-label { font-size: 13px; color: var(--text-muted); font-weight: 500; }
 
 /* UPCOMING */
@@ -500,4 +596,7 @@ button { font-family: inherit; cursor: pointer; }
   .btn { flex: 1; }
   .tema-questoes { padding: 12px 14px 16px; }
   .questoes-grid { grid-template-columns: repeat(auto-fill, minmax(34px, 1fr)); gap: 6px; }
+  .progress-card { flex-direction: column; padding: 24px 20px; text-align: center; }
+  .progress-card-info { width: 100%; }
+  .progress-bar-outer { margin-left: auto; margin-right: auto; }
 }

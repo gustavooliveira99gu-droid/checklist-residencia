@@ -228,6 +228,9 @@ function renderAll() {
   renderChecklist();
 }
 
+const PROGRESS_RING_RADIUS = 54;
+const PROGRESS_RING_CIRCUMFERENCE = 2 * Math.PI * PROGRESS_RING_RADIUS;
+
 function renderDashboard() {
   const total = state.temas.length;
   const done = state.temas.filter((t) => t.concluido).length;
@@ -238,6 +241,15 @@ function renderDashboard() {
   document.getElementById("progress-title").textContent = `${done} / ${total} temas`;
   document.getElementById("progress-percent").textContent = `${pct}% concluído`;
   document.getElementById("progress-bar-fill").style.width = pct + "%";
+
+  const ringFill = document.getElementById("progress-ring-fill");
+  if (ringFill) {
+    const offset = PROGRESS_RING_CIRCUMFERENCE - (pct / 100) * PROGRESS_RING_CIRCUMFERENCE;
+    ringFill.style.strokeDasharray = `${PROGRESS_RING_CIRCUMFERENCE}`;
+    ringFill.style.strokeDashoffset = `${offset}`;
+  }
+  const ringPct = document.getElementById("progress-ring-pct");
+  if (ringPct) ringPct.textContent = pct + "%";
 
   document.getElementById("stat-total").textContent = total;
   document.getElementById("stat-done").textContent = done;

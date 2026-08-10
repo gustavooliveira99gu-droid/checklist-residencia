@@ -25,32 +25,59 @@
 
   <!-- DASHBOARD -->
   <section class="dashboard">
+    <span class="dashboard-eyebrow">Visão geral</span>
     <div class="progress-card card">
-      <div class="progress-card-top">
-        <div>
-          <h2 id="progress-title">0 / 0 temas</h2>
-          <p id="progress-percent" class="progress-percent">0% concluído</p>
+      <div class="progress-ring-wrap">
+        <svg class="progress-ring" viewBox="0 0 128 128" width="128" height="128" role="img" aria-label="Progresso geral">
+          <defs>
+            <linearGradient id="progressGradient" x1="0%" y1="0%" x2="100%" y2="100%">
+              <stop offset="0%" stop-color="#2563eb"/>
+              <stop offset="100%" stop-color="#1e3a5f"/>
+            </linearGradient>
+          </defs>
+          <circle class="progress-ring-track" cx="64" cy="64" r="54"></circle>
+          <circle id="progress-ring-fill" class="progress-ring-fill" cx="64" cy="64" r="54"></circle>
+        </svg>
+        <div class="progress-ring-center">
+          <span id="progress-ring-pct" class="progress-ring-pct">0%</span>
+          <span class="progress-ring-caption">concluído</span>
         </div>
       </div>
-      <div class="progress-bar-outer">
-        <div id="progress-bar-fill" class="progress-bar-fill" style="width:0%"></div>
+      <div class="progress-card-info">
+        <h2 id="progress-title">0 / 0 temas</h2>
+        <p id="progress-percent" class="progress-percent">0% concluído</p>
+        <div class="progress-bar-outer">
+          <div id="progress-bar-fill" class="progress-bar-fill" style="width:0%"></div>
+        </div>
       </div>
     </div>
 
     <div class="stat-cards">
-      <div class="card stat-card">
+      <div class="card stat-card stat-card--total">
+        <span class="stat-icon" aria-hidden="true">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M8 6h13M8 12h13M8 18h13"/><path d="M3 6h.01M3 12h.01M3 18h.01"/></svg>
+        </span>
         <span class="stat-value" id="stat-total">0</span>
         <span class="stat-label">Total de temas</span>
       </div>
-      <div class="card stat-card">
+      <div class="card stat-card stat-card--done">
+        <span class="stat-icon" aria-hidden="true">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M22 11.08V12a10 10 0 1 1-5.93-9.14"/><path d="M22 4 12 14.01l-3-3"/></svg>
+        </span>
         <span class="stat-value" id="stat-done">0</span>
         <span class="stat-label">Concluídos</span>
       </div>
-      <div class="card stat-card">
+      <div class="card stat-card stat-card--pending">
+        <span class="stat-icon" aria-hidden="true">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><path d="M12 6v6l4 2"/></svg>
+        </span>
         <span class="stat-value" id="stat-pending">0</span>
         <span class="stat-label">Pendentes</span>
       </div>
-      <div class="card stat-card">
+      <div class="card stat-card stat-card--scheduled">
+        <span class="stat-icon" aria-hidden="true">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="4" width="18" height="18" rx="3"/><path d="M16 2v4M8 2v4M3 10h18"/></svg>
+        </span>
         <span class="stat-value" id="stat-scheduled">0</span>
         <span class="stat-label">Programados</span>
       </div>
