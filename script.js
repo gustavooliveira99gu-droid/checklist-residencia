@@ -15,6 +15,21 @@ const GOOGLE_SCOPES =
 /* ---------- STORAGE ---------- */
 const STORAGE_KEY = "checklist_residencia_data_v1";
 
+/* ---------- QUESTÕES POR TEMA ---------- */
+const QUESTOES_POR_TEMA = 15;
+function novaListaQuestoes() {
+  return Array(QUESTOES_POR_TEMA).fill(false);
+}
+function normalizeTemas(temas) {
+  temas.forEach((t) => {
+    if (!Array.isArray(t.questoes) || t.questoes.length !== QUESTOES_POR_TEMA) {
+      t.questoes = novaListaQuestoes();
+    } else {
+      t.questoes = t.questoes.map((v) => !!v);
+    }
+  });
+}
+
 /* ---------- SEED DATA (usada apenas na primeira execução) ---------- */
 function buildSeedData() {
   const especialidades = [
@@ -109,6 +124,7 @@ function buildSeedData() {
     eventId: null,
     calendarId: null,
     observacoes: "",
+    questoes: novaListaQuestoes(),
   }));
 
   return {
@@ -136,6 +152,8 @@ function loadState() {
     const parsed = JSON.parse(raw);
     if (!parsed.especialidades || !parsed.temas) throw new Error("formato inválido");
     if (!parsed.config) parsed.config = { googleConnected: false, selectedCalendarId: null, selectedCalendarName: null };
+    normalizeTemas(parsed.temas);
+    localStorage.setItem(STORAGE_KEY, JSON.stringify(parsed));
     return parsed;
   } catch (e) {
     console.error("Erro ao carregar dados, iniciando com dados padrão.", e);
@@ -158,6 +176,7 @@ const ui = {
   search: "",
   statusFilter: "todos", // todos | pendentes | concluidos | programados
   especialidadeFilter: "todas",
+  expandedQuestoes: new Set(), // temaIds com o painel de questões aberto
 };
 
 /* ---------- HELPERS ---------- */
@@ -319,18 +338,27 @@ function renderChecklist() {
               `<span class="badge-scheduled">📅 ${formatDateFull(t.dataEstudo)}${t.horario ? " · " + t.horario : ""}</span>`
             );
           }
+          const doneQ = t.questoes.filter(Boolean).length;
+          const isQuestoesComplete = doneQ === QUESTOES_POR_TEMA;
+          metaParts.push(
+            `<span class="badge-questoes ${isQuestoesComplete ? "completo" : ""}" id="questoes-badge-${t.id}">📝 Questões: ${doneQ}/${QUESTOES_POR_TEMA}${isQuestoesComplete ? " ✓" : ""}</span>`
+          );
           return `
-          <div class="tema-row ${t.concluido ? "concluido" : ""}" data-tema-id="${t.id}">
-            <input type="checkbox" class="tema-checkbox" data-action="toggle" ${t.concluido ? "checked" : ""}>
-            <div class="tema-info">
-              <div class="tema-nome">${escapeHtml(t.nome)}</div>
-              ${metaParts.length ? `<div class="tema-meta">${metaParts.join("")}</div>` : ""}
+          <div class="tema-block">
+            <div class="tema-row ${t.concluido ? "concluido" : ""}" data-tema-id="${t.id}">
+              <input type="checkbox" class="tema-checkbox" data-action="toggle" ${t.concluido ? "checked" : ""}>
+              <div class="tema-info">
+                <div class="tema-nome">${escapeHtml(t.nome)}</div>
+                <div class="tema-meta">${metaParts.join("")}</div>
+              </div>
+              <div class="tema-actions">
+                <button class="icon-btn" data-action="questoes" title="Questões">📝</button>
+                <button class="icon-btn" data-action="agendar" title="Agendar">📅</button>
+                <button class="icon-btn" data-action="editar" title="Editar">✏️</button>
+                <button class="icon-btn" data-action="excluir" title="Excluir">🗑</button>
+              </div>
             </div>
-            <div class="tema-actions">
-              <button class="icon-btn" data-action="agendar" title="Agendar">📅</button>
-              <button class="icon-btn" data-action="editar" title="Editar">✏️</button>
-              <button class="icon-btn" data-action="excluir" title="Excluir">🗑</button>
-            </div>
+            ${renderQuestoesPanel(t)}
           </div>`;
         })
         .join("");
@@ -352,6 +380,37 @@ function renderChecklist() {
     .join("");
 }
 
+function renderQuestoesPanel(tema) {
+  const doneQ = tema.questoes.filter(Boolean).length;
+  const pctQ = Math.round((doneQ / QUESTOES_POR_TEMA) * 100);
+  const isComplete = doneQ === QUESTOES_POR_TEMA;
+  const expanded = ui.expandedQuestoes.has(tema.id);
+
+  const checkboxes = tema.questoes
+    .map((marcada, i) => {
+      const numero = i + 1;
+      const inputId = `q-${tema.id}-${numero}`;
+      return `
+        <label class="questao-check ${marcada ? "marcada" : ""}" for="${inputId}">
+          <input type="checkbox" id="${inputId}" data-action="toggle-questao" data-tema-id="${tema.id}" data-q-index="${i}" ${marcada ? "checked" : ""}>
+          <span>${numero}</span>
+        </label>`;
+    })
+    .join("");
+
+  return `
+    <div class="tema-questoes ${expanded ? "" : "hidden"} ${isComplete ? "completo" : ""}" id="questoes-panel-${tema.id}">
+      <div class="questoes-top">
+        <span class="questoes-label">Questões</span>
+        <span class="questoes-counter" id="questoes-counter-${tema.id}">Questões: ${doneQ}/${QUESTOES_POR_TEMA}</span>
+      </div>
+      <div class="questoes-progress-outer">
+        <div class="questoes-progress-fill ${isComplete ? "completo" : ""}" id="questoes-progress-${tema.id}" style="width:${pctQ}%"></div>
+      </div>
+      <div class="questoes-grid">${checkboxes}</div>
+    </div>`;
+}
+
 function escapeHtml(str) {
   const div = document.createElement("div");
   div.textContent = str == null ? "" : String(str);
@@ -371,6 +430,7 @@ document.getElementById("checklist").addEventListener("click", (e) => {
   if (action === "editar") openEditTema(temaId);
   else if (action === "excluir") openConfirmDelete(temaId);
   else if (action === "agendar") openAgendar(temaId);
+  else if (action === "questoes") toggleQuestoesPanel(temaId);
 });
 
 document.getElementById("checklist").addEventListener("change", (e) => {
@@ -381,8 +441,55 @@ document.getElementById("checklist").addEventListener("change", (e) => {
     tema.concluido = e.target.checked;
     saveState();
     renderAll();
+  } else if (e.target.dataset.action === "toggle-questao") {
+    const temaId = e.target.dataset.temaId;
+    const qIndex = parseInt(e.target.dataset.qIndex, 10);
+    const tema = getTema(temaId);
+    if (!tema || Number.isNaN(qIndex)) return;
+    tema.questoes[qIndex] = e.target.checked;
+    saveState();
+    const label = e.target.closest(".questao-check");
+    if (label) label.classList.toggle("marcada", e.target.checked);
+    updateQuestoesUI(tema);
   }
 });
+
+function toggleQuestoesPanel(temaId) {
+  const panel = document.getElementById("questoes-panel-" + temaId);
+  if (!panel) return;
+  const isHidden = panel.classList.contains("hidden");
+  if (isHidden) {
+    panel.classList.remove("hidden");
+    ui.expandedQuestoes.add(temaId);
+  } else {
+    panel.classList.add("hidden");
+    ui.expandedQuestoes.delete(temaId);
+  }
+}
+
+function updateQuestoesUI(tema) {
+  const doneQ = tema.questoes.filter(Boolean).length;
+  const pctQ = Math.round((doneQ / QUESTOES_POR_TEMA) * 100);
+  const isComplete = doneQ === QUESTOES_POR_TEMA;
+
+  const counterEl = document.getElementById("questoes-counter-" + tema.id);
+  if (counterEl) counterEl.textContent = `Questões: ${doneQ}/${QUESTOES_POR_TEMA}`;
+
+  const badgeEl = document.getElementById("questoes-badge-" + tema.id);
+  if (badgeEl) {
+    badgeEl.textContent = `📝 Questões: ${doneQ}/${QUESTOES_POR_TEMA}${isComplete ? " ✓" : ""}`;
+    badgeEl.classList.toggle("completo", isComplete);
+  }
+
+  const fillEl = document.getElementById("questoes-progress-" + tema.id);
+  if (fillEl) {
+    fillEl.style.width = pctQ + "%";
+    fillEl.classList.toggle("completo", isComplete);
+  }
+
+  const panelEl = document.getElementById("questoes-panel-" + tema.id);
+  if (panelEl) panelEl.classList.toggle("completo", isComplete);
+}
 
 /* ============================================================
    BUSCA E FILTROS
@@ -507,6 +614,7 @@ formTema.addEventListener("submit", async (e) => {
       eventId: null,
       calendarId: null,
       observacoes: "",
+      questoes: novaListaQuestoes(),
     };
     state.temas.push(novoTema);
     saveState();
@@ -726,6 +834,7 @@ document.getElementById("import-file-input").addEventListener("change", (e) => {
       const parsed = JSON.parse(evt.target.result);
       if (!parsed.especialidades || !parsed.temas) throw new Error("Arquivo inválido.");
       if (!parsed.config) parsed.config = { googleConnected: false, selectedCalendarId: null, selectedCalendarName: null };
+      normalizeTemas(parsed.temas);
       state = parsed;
       saveState();
       renderAll();

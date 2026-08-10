@@ -256,14 +256,14 @@ button { font-family: inherit; cursor: pointer; }
 }
 
 .tema-list { display: flex; flex-direction: column; }
+.tema-block { border-bottom: 1px solid var(--border); }
+.tema-block:last-child { border-bottom: none; }
 .tema-row {
   display: flex;
   align-items: center;
   gap: 12px;
   padding: 12px 20px;
-  border-bottom: 1px solid var(--border);
 }
-.tema-row:last-child { border-bottom: none; }
 .tema-row.concluido .tema-nome { color: var(--text-faint); text-decoration: line-through; }
 
 .tema-checkbox {
@@ -294,6 +294,17 @@ button { font-family: inherit; cursor: pointer; }
   border-radius: 999px;
   font-weight: 600;
 }
+.badge-questoes {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  background: #f3f0fc;
+  color: #7c3aed;
+  padding: 2px 8px;
+  border-radius: 999px;
+  font-weight: 600;
+}
+.badge-questoes.completo { background: var(--success-bg); color: var(--success); }
 
 .tema-actions { display: flex; gap: 4px; flex-shrink: 0; }
 .icon-btn {
@@ -306,6 +317,75 @@ button { font-family: inherit; cursor: pointer; }
   line-height: 1;
 }
 .icon-btn:hover { background: #f0f1f3; }
+
+/* QUESTÕES POR TEMA */
+.tema-questoes {
+  padding: 14px 20px 18px;
+  background: #fafbfc;
+  border-top: 1px dashed var(--border);
+}
+.tema-questoes.completo { background: var(--success-bg); }
+.questoes-top {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  flex-wrap: wrap;
+  margin-bottom: 8px;
+}
+.questoes-label {
+  font-size: 12px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.03em;
+  color: var(--text-muted);
+}
+.questoes-counter { font-size: 13px; font-weight: 700; color: var(--primary); }
+.questoes-progress-outer {
+  height: 6px;
+  border-radius: 999px;
+  background: #eef1f5;
+  overflow: hidden;
+  margin-bottom: 12px;
+}
+.questoes-progress-fill {
+  height: 100%;
+  border-radius: 999px;
+  background: var(--accent);
+  transition: width 0.25s ease;
+}
+.questoes-progress-fill.completo { background: var(--success); }
+.questoes-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(40px, 1fr));
+  gap: 8px;
+}
+.questao-check {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 4px;
+  padding: 6px 4px;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: var(--surface);
+  cursor: pointer;
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--text-muted);
+  user-select: none;
+}
+.questao-check input {
+  width: 15px;
+  height: 15px;
+  accent-color: var(--success);
+  cursor: pointer;
+}
+.questao-check.marcada {
+  background: var(--success-bg);
+  border-color: #bfe8cf;
+  color: var(--success);
+}
 
 /* MODAL */
 .modal-overlay {
@@ -418,4 +498,6 @@ button { font-family: inherit; cursor: pointer; }
   .select-especialidade { width: 100%; }
   .header-actions { width: 100%; }
   .btn { flex: 1; }
+  .tema-questoes { padding: 12px 14px 16px; }
+  .questoes-grid { grid-template-columns: repeat(auto-fill, minmax(34px, 1fr)); gap: 6px; }
 }
