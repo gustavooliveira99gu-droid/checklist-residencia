@@ -135,6 +135,9 @@ function buildSeedData() {
       selectedCalendarId: null,
       selectedCalendarName: null,
     },
+    cronograma: {
+      atividades: [],
+    },
   };
 }
 
@@ -153,6 +156,7 @@ function loadState() {
     if (!parsed.especialidades || !parsed.temas) throw new Error("formato inválido");
     if (!parsed.config) parsed.config = { googleConnected: false, selectedCalendarId: null, selectedCalendarName: null };
     normalizeTemas(parsed.temas);
+    normalizeCronograma(parsed);
     localStorage.setItem(STORAGE_KEY, JSON.stringify(parsed));
     return parsed;
   } catch (e) {
@@ -177,6 +181,7 @@ const ui = {
   statusFilter: "todos", // todos | pendentes | concluidos | programados
   especialidadeFilter: "todas",
   expandedQuestoes: new Set(), // temaIds com o painel de questões aberto
+  cronogramaTab: "hoje", // hoje | semana | proximas | atrasadas | progresso
 };
 
 /* ---------- HELPERS ---------- */
@@ -226,6 +231,7 @@ function renderAll() {
   renderUpcoming();
   renderEspecialidadeFilterOptions();
   renderChecklist();
+  renderCronograma();
 }
 
 const PROGRESS_RING_RADIUS = 54;
@@ -629,6 +635,7 @@ formTema.addEventListener("submit", async (e) => {
       questoes: novaListaQuestoes(),
     };
     state.temas.push(novoTema);
+    agendarEstudoTema(novoTema);
     saveState();
     renderAll();
     modalTema.classList.add("hidden");
@@ -671,6 +678,7 @@ document.getElementById("btn-confirm-delete").addEventListener("click", async ()
     }
   }
   state.temas = state.temas.filter((t) => t.id !== temaIdToDelete);
+  state.cronograma.atividades = state.cronograma.atividades.filter((a) => a.temaId !== temaIdToDelete);
   saveState();
   temaIdToDelete = null;
   modalConfirm.classList.add("hidden");
@@ -847,7 +855,9 @@ document.getElementById("import-file-input").addEventListener("change", (e) => {
       if (!parsed.especialidades || !parsed.temas) throw new Error("Arquivo inválido.");
       if (!parsed.config) parsed.config = { googleConnected: false, selectedCalendarId: null, selectedCalendarName: null };
       normalizeTemas(parsed.temas);
+      normalizeCronograma(parsed);
       state = parsed;
+      bootstrapCronograma();
       saveState();
       renderAll();
       refreshSettingsUI();
@@ -860,6 +870,496 @@ document.getElementById("import-file-input").addEventListener("change", (e) => {
     }
   };
   reader.readAsText(file);
+});
+
+/* ============================================================
+   CRONOGRAMA INTELIGENTE (Estudo → Questões → Revisão D1 → D7 → D30)
+   ============================================================ */
+const DIAS_DISPONIVEIS_ESTUDO = [1, 2, 3]; // 1=segunda, 2=terça, 3=quarta (Date.getDay())
+const MINUTOS_POR_DIA_CRONOGRAMA = 180;
+const DURACAO_ESTUDO = 90;
+const DURACAO_QUESTOES_ATIV = 30;
+const DURACAO_REVISAO = 30;
+const NOMES_DIAS_SEMANA = ["Domingo", "Segunda-feira", "Terça-feira", "Quarta-feira", "Quinta-feira", "Sexta-feira", "Sábado"];
+
+const TIPO_ATIVIDADE_INFO = {
+  estudo: { label: "Estudo", icon: "📖", ordem: 4 },
+  questoes: { label: `${QUESTOES_POR_TEMA} questões`, icon: "📝", ordem: 5 },
+  revisao_d1: { label: "Revisão D1", icon: "🔁", ordem: 1 },
+  revisao_d7: { label: "Revisão D7", icon: "🔁", ordem: 2 },
+  revisao_d30: { label: "Revisão D30", icon: "🔁", ordem: 3 },
+};
+
+function normalizeCronograma(parsed) {
+  if (!parsed.cronograma || !Array.isArray(parsed.cronograma.atividades)) {
+    parsed.cronograma = { atividades: [] };
+  }
+}
+
+/* ---------- Datas locais (evita erro de timezone do UTC parse) ---------- */
+function parseLocalDate(dateStr) {
+  const [y, m, d] = dateStr.split("-").map(Number);
+  return new Date(y, m - 1, d);
+}
+function formatLocalDate(date) {
+  return date.getFullYear() + "-" + pad(date.getMonth() + 1) + "-" + pad(date.getDate());
+}
+function addDaysStr(dateStr, dias) {
+  const d = parseLocalDate(dateStr);
+  d.setDate(d.getDate() + dias);
+  return formatLocalDate(d);
+}
+function diaDaSemanaNum(dateStr) {
+  return parseLocalDate(dateStr).getDay();
+}
+function ehDiaDisponivel(dateStr) {
+  return DIAS_DISPONIVEIS_ESTUDO.includes(diaDaSemanaNum(dateStr));
+}
+function proximoDiaDisponivel(dateStr) {
+  let d = dateStr;
+  let guard = 0;
+  while (!ehDiaDisponivel(d) && guard < 14) {
+    d = addDaysStr(d, 1);
+    guard++;
+  }
+  return d;
+}
+function segundaDaSemanaDe(dateStr) {
+  const d = parseLocalDate(dateStr);
+  const dow = d.getDay();
+  const diff = dow === 0 ? -6 : 1 - dow;
+  d.setDate(d.getDate() + diff);
+  return formatLocalDate(d);
+}
+function formatDuracao(min) {
+  if (min < 60) return `${min} min`;
+  const h = Math.floor(min / 60);
+  const m = min % 60;
+  return m === 0 ? `${h}h` : `${h}h${pad(m)}`;
+}
+
+/* ---------- CRUD de atividades ---------- */
+function criarAtividade(temaId, tipo, dataPlanejada, duracaoMin, extra) {
+  const atividade = Object.assign(
+    {
+      id: uid("ativ"),
+      temaId,
+      tipo,
+      dataPlanejada,
+      duracaoMin,
+      concluida: false,
+      dataConclusao: null,
+      acertos: null,
+      erros: null,
+      percentual: null,
+      origemDataEstudo: null,
+    },
+    extra || {}
+  );
+  state.cronograma.atividades.push(atividade);
+  return atividade;
+}
+function getAtividadesDoTema(temaId) {
+  return state.cronograma.atividades.filter((a) => a.temaId === temaId);
+}
+function minutosUsadosNoDia(dataStr) {
+  return state.cronograma.atividades
+    .filter((a) => a.dataPlanejada === dataStr)
+    .reduce((soma, a) => soma + (a.duracaoMin || 0), 0);
+}
+
+/* ---------- Agendamento automático do estudo inicial de um tema ---------- */
+function agendarEstudoTema(tema) {
+  const jaTemEstudo = state.cronograma.atividades.some((a) => a.temaId === tema.id && a.tipo === "estudo");
+  if (jaTemEstudo) return;
+  let cursor = proximoDiaDisponivel(todayStr());
+  let guard = 0;
+  while (guard < 500) {
+    const usado = minutosUsadosNoDia(cursor);
+    if (MINUTOS_POR_DIA_CRONOGRAMA - usado >= DURACAO_ESTUDO + DURACAO_QUESTOES_ATIV) {
+      criarAtividade(tema.id, "estudo", cursor, DURACAO_ESTUDO);
+      criarAtividade(tema.id, "questoes", cursor, DURACAO_QUESTOES_ATIV);
+      return;
+    }
+    cursor = proximoDiaDisponivel(addDaysStr(cursor, 1));
+    guard++;
+  }
+}
+
+/* ---------- Geração das revisões D1 / D7 / D30 a partir da data real de conclusão ---------- */
+function gerarRevisoes(atividadeEstudo) {
+  const dataConclusao = atividadeEstudo.dataConclusao;
+  if (!dataConclusao) return;
+  const specs = [
+    { tipo: "revisao_d1", dias: 1 },
+    { tipo: "revisao_d7", dias: 7 },
+    { tipo: "revisao_d30", dias: 30 },
+  ];
+  specs.forEach(({ tipo, dias }) => {
+    const jaExiste = state.cronograma.atividades.some((a) => a.temaId === atividadeEstudo.temaId && a.tipo === tipo);
+    if (jaExiste) return;
+    const dataAlvo = proximoDiaDisponivel(addDaysStr(dataConclusao, dias));
+    criarAtividade(atividadeEstudo.temaId, tipo, dataAlvo, DURACAO_REVISAO, { origemDataEstudo: dataConclusao });
+  });
+}
+
+/* ---------- Bootstrap: garante que todo tema (existente ou novo) tenha atividades ---------- */
+function bootstrapCronograma() {
+  let mudou = false;
+  state.temas.forEach((tema) => {
+    const temAtividades = state.cronograma.atividades.some((a) => a.temaId === tema.id);
+    if (temAtividades) return;
+    mudou = true;
+    if (tema.concluido) {
+      // Tema já estava marcado como concluído antes deste recurso existir:
+      // entra direto no ciclo de revisões, ancorado em hoje.
+      const hoje = todayStr();
+      const estudo = criarAtividade(tema.id, "estudo", hoje, DURACAO_ESTUDO, { concluida: true, dataConclusao: hoje });
+      criarAtividade(tema.id, "questoes", hoje, DURACAO_QUESTOES_ATIV);
+      gerarRevisoes(estudo);
+    } else {
+      agendarEstudoTema(tema);
+    }
+  });
+  if (mudou) saveState();
+}
+
+/* ---------- Ações sobre atividades ---------- */
+function concluirAtividade(atividadeId) {
+  const atividade = state.cronograma.atividades.find((a) => a.id === atividadeId);
+  if (!atividade) return;
+  atividade.concluida = true;
+  atividade.dataConclusao = todayStr();
+  if (atividade.tipo === "estudo") gerarRevisoes(atividade);
+  saveState();
+  renderCronograma();
+  renderDashboard();
+}
+function desfazerAtividade(atividadeId) {
+  const atividade = state.cronograma.atividades.find((a) => a.id === atividadeId);
+  if (!atividade) return;
+  atividade.concluida = false;
+  atividade.dataConclusao = null;
+  saveState();
+  renderCronograma();
+}
+function registrarAcertosAtividade(atividadeId, valor) {
+  const atividade = state.cronograma.atividades.find((a) => a.id === atividadeId);
+  if (!atividade) return;
+  if (valor === "" || valor == null || Number.isNaN(valor)) {
+    atividade.acertos = null;
+    atividade.erros = null;
+    atividade.percentual = null;
+  } else {
+    const clamped = Math.max(0, Math.min(QUESTOES_POR_TEMA, Math.round(valor)));
+    atividade.acertos = clamped;
+    atividade.erros = QUESTOES_POR_TEMA - clamped;
+    atividade.percentual = Math.round((clamped / QUESTOES_POR_TEMA) * 100);
+  }
+  saveState();
+}
+
+/* ---------- Dica de revisão baseada no desempenho anterior ---------- */
+function dicaParaRevisao(temaId) {
+  const historico = getAtividadesDoTema(temaId)
+    .filter((a) => a.acertos != null)
+    .sort((a, b) => (a.dataConclusao || "").localeCompare(b.dataConclusao || ""));
+  if (!historico.length) return null;
+  const ultima = historico[historico.length - 1];
+  if (ultima.erros > 0) {
+    return `Foco nos pontos de dificuldade — ${ultima.erros} questão(ões) errada(s) na última tentativa (${ultima.acertos}/${QUESTOES_POR_TEMA} · ${ultima.percentual}%).`;
+  }
+  return `Última tentativa: ${ultima.acertos}/${QUESTOES_POR_TEMA} acertos (${ultima.percentual}%). Revise os pontos-chave do tema.`;
+}
+
+/* ---------- Ordenação por prioridade (atrasadas > D1 > D7 > D30 > novos temas) ---------- */
+function ativPrioridadeSort(a, b) {
+  const hoje = todayStr();
+  const aAtrasada = !a.concluida && a.dataPlanejada < hoje;
+  const bAtrasada = !b.concluida && b.dataPlanejada < hoje;
+  if (aAtrasada !== bAtrasada) return aAtrasada ? -1 : 1;
+  const ordemA = TIPO_ATIVIDADE_INFO[a.tipo] ? TIPO_ATIVIDADE_INFO[a.tipo].ordem : 9;
+  const ordemB = TIPO_ATIVIDADE_INFO[b.tipo] ? TIPO_ATIVIDADE_INFO[b.tipo].ordem : 9;
+  return ordemA - ordemB;
+}
+
+/* ---------- Renderização ---------- */
+function renderAtividadeCard(atividade) {
+  const tema = getTema(atividade.temaId);
+  if (!tema) return "";
+  const esp = getEspecialidade(tema.especialidadeId);
+  const hoje = todayStr();
+  const atrasada = !atividade.concluida && atividade.dataPlanejada < hoje;
+  const info = TIPO_ATIVIDADE_INFO[atividade.tipo] || { label: atividade.tipo, icon: "•" };
+  const temAcertos = atividade.tipo !== "estudo";
+  const ehRevisao = atividade.tipo.indexOf("revisao_") === 0;
+  const dica = ehRevisao ? dicaParaRevisao(atividade.temaId) : null;
+
+  return `
+    <div class="ativ-card ${atividade.concluida ? "concluida" : ""} ${atrasada ? "atrasada" : ""}" data-ativ-id="${atividade.id}" style="--esp-color:${esp ? esp.cor : "var(--accent)"}">
+      <div class="ativ-main">
+        <span class="ativ-icon">${info.icon}</span>
+        <div class="ativ-info">
+          <div class="ativ-title">${escapeHtml(tema.nome)}</div>
+          <div class="ativ-meta">
+            <span class="ativ-tipo-label">${info.label}</span>
+            <span class="ativ-duracao">${formatDuracao(atividade.duracaoMin)}</span>
+            <span class="ativ-data">${formatDateFull(atividade.dataPlanejada)}</span>
+            ${atrasada ? '<span class="ativ-badge ativ-badge-atrasada">Atrasada</span>' : ""}
+            ${atividade.concluida ? '<span class="ativ-badge ativ-badge-concluida">✓ Concluída</span>' : ""}
+          </div>
+          ${dica ? `<div class="ativ-dica">💡 ${escapeHtml(dica)}</div>` : ""}
+          ${
+            temAcertos
+              ? `<div class="ativ-acertos">
+                  <label for="acertos-${atividade.id}">Acertos</label>
+                  <input type="number" min="0" max="${QUESTOES_POR_TEMA}" id="acertos-${atividade.id}" data-action="registrar-acertos" data-ativ-id="${atividade.id}" value="${atividade.acertos != null ? atividade.acertos : ""}" placeholder="0-${QUESTOES_POR_TEMA}">
+                  <span class="ativ-acertos-total">/ ${QUESTOES_POR_TEMA}</span>
+                  ${atividade.percentual != null ? `<span class="ativ-pct">${atividade.percentual}%</span>` : ""}
+                </div>`
+              : ""
+          }
+        </div>
+      </div>
+      <div class="ativ-actions">
+        ${
+          atividade.concluida
+            ? `<button class="btn-ativ btn-ativ-undo" data-action="desfazer-ativ" data-ativ-id="${atividade.id}">↺ Desfazer</button>`
+            : `<button class="btn-ativ btn-ativ-done" data-action="concluir-ativ" data-ativ-id="${atividade.id}">✓ Concluir</button>`
+        }
+        <button class="icon-btn" data-action="reagendar-ativ" data-ativ-id="${atividade.id}" title="Reagendar">🔁</button>
+        <button class="icon-btn" data-action="editar-ativ" data-ativ-id="${atividade.id}" title="Editar">✏️</button>
+      </div>
+    </div>`;
+}
+
+function renderCronograma() {
+  const container = document.getElementById("cronograma-content");
+  if (!container) return;
+  if (ui.cronogramaTab === "hoje") renderCronogramaHoje(container);
+  else if (ui.cronogramaTab === "semana") renderCronogramaSemana(container);
+  else if (ui.cronogramaTab === "proximas") renderCronogramaProximasRevisoes(container);
+  else if (ui.cronogramaTab === "atrasadas") renderCronogramaAtrasadas(container);
+  else if (ui.cronogramaTab === "progresso") renderCronogramaProgresso(container);
+}
+
+function renderCronogramaHoje(container) {
+  const hoje = todayStr();
+  const disponivelHoje = ehDiaDisponivel(hoje);
+  const doDia = state.cronograma.atividades.filter((a) => a.dataPlanejada === hoje && !a.concluida);
+  const atrasadas = disponivelHoje
+    ? state.cronograma.atividades.filter((a) => !a.concluida && a.dataPlanejada < hoje)
+    : [];
+  const todas = atrasadas.concat(doDia).sort(ativPrioridadeSort);
+  const totalMin = todas.reduce((s, a) => s + (a.duracaoMin || 0), 0);
+
+  if (!disponivelHoje) {
+    container.innerHTML = `
+      <div class="crono-day-heading"><span>${NOMES_DIAS_SEMANA[diaDaSemanaNum(hoje)]} — hoje não é dia de estudo programado</span></div>
+      <p class="empty-msg">Sua disponibilidade fixa é segunda, terça e quarta. Confira a aba "Atrasadas" caso haja pendências.</p>`;
+    return;
+  }
+
+  if (todas.length === 0) {
+    container.innerHTML = `
+      <div class="crono-day-heading"><span>Hoje — ${formatDateFull(hoje)}</span><span class="crono-day-total">0 min / ${formatDuracao(MINUTOS_POR_DIA_CRONOGRAMA)}</span></div>
+      <p class="empty-msg">Nada programado para hoje.</p>`;
+    return;
+  }
+
+  container.innerHTML = `
+    <div class="crono-day-heading">
+      <span>Hoje — ${formatDateFull(hoje)}</span>
+      <span class="crono-day-total">${formatDuracao(totalMin)} / ${formatDuracao(MINUTOS_POR_DIA_CRONOGRAMA)}</span>
+    </div>
+    <div class="ativ-list">${todas.map(renderAtividadeCard).join("")}</div>`;
+}
+
+function renderCronogramaSemana(container) {
+  const segunda = segundaDaSemanaDe(todayStr());
+  const dias = [segunda, addDaysStr(segunda, 1), addDaysStr(segunda, 2)];
+  const nomes = ["Segunda-feira", "Terça-feira", "Quarta-feira"];
+
+  const blocos = dias
+    .map((dia, i) => {
+      const ativs = state.cronograma.atividades.filter((a) => a.dataPlanejada === dia).sort(ativPrioridadeSort);
+      const totalMin = ativs.reduce((s, a) => s + (a.duracaoMin || 0), 0);
+      return `
+        <div class="crono-day-block">
+          <div class="crono-day-heading">
+            <span>${nomes[i]} — ${formatDateFull(dia)}${dia === todayStr() ? " · Hoje" : ""}</span>
+            <span class="crono-day-total">${formatDuracao(totalMin)} / ${formatDuracao(MINUTOS_POR_DIA_CRONOGRAMA)}</span>
+          </div>
+          ${
+            ativs.length
+              ? `<div class="ativ-list">${ativs.map(renderAtividadeCard).join("")}</div>`
+              : '<p class="empty-msg">Nada programado.</p>'
+          }
+        </div>`;
+    })
+    .join("");
+
+  container.innerHTML = blocos;
+}
+
+function renderCronogramaProximasRevisoes(container) {
+  const hoje = todayStr();
+  const revisoes = state.cronograma.atividades
+    .filter((a) => !a.concluida && a.tipo.indexOf("revisao_") === 0 && a.dataPlanejada >= hoje)
+    .sort((a, b) => a.dataPlanejada.localeCompare(b.dataPlanejada) || ativPrioridadeSort(a, b));
+
+  if (!revisoes.length) {
+    container.innerHTML = '<p class="empty-msg">Nenhuma revisão futura agendada ainda.</p>';
+    return;
+  }
+
+  let html = "";
+  let lastDate = null;
+  revisoes.forEach((a) => {
+    if (a.dataPlanejada !== lastDate) {
+      const label = formatDateLabel(a.dataPlanejada);
+      html += `<div class="crono-day-heading crono-day-heading--slim"><span>${label === "Hoje" || label === "Amanhã" ? label : formatDateFull(a.dataPlanejada)}</span></div>`;
+      lastDate = a.dataPlanejada;
+    }
+    html += `<div class="ativ-list">${renderAtividadeCard(a)}</div>`;
+  });
+  container.innerHTML = html;
+}
+
+function renderCronogramaAtrasadas(container) {
+  const hoje = todayStr();
+  const atrasadas = state.cronograma.atividades
+    .filter((a) => !a.concluida && a.dataPlanejada < hoje)
+    .sort((a, b) => a.dataPlanejada.localeCompare(b.dataPlanejada));
+
+  if (!atrasadas.length) {
+    container.innerHTML = '<p class="empty-msg">Nenhuma atividade atrasada. 🎉</p>';
+    return;
+  }
+
+  container.innerHTML = `<div class="ativ-list">${atrasadas.map(renderAtividadeCard).join("")}</div>`;
+}
+
+function renderCronogramaProgresso(container) {
+  const ativs = state.cronograma.atividades;
+  const temasEstudados = new Set(ativs.filter((a) => a.tipo === "estudo" && a.concluida).map((a) => a.temaId)).size;
+  const comAcertos = ativs.filter((a) => a.acertos != null);
+  const questoesRealizadas = comAcertos.length;
+  const mediaAcertos = questoesRealizadas
+    ? Math.round(comAcertos.reduce((s, a) => s + (a.percentual || 0), 0) / questoesRealizadas)
+    : 0;
+  const d1 = ativs.filter((a) => a.tipo === "revisao_d1" && a.concluida).length;
+  const d7 = ativs.filter((a) => a.tipo === "revisao_d7" && a.concluida).length;
+  const d30 = ativs.filter((a) => a.tipo === "revisao_d30" && a.concluida).length;
+  const hoje = todayStr();
+  const atrasadas = ativs.filter((a) => !a.concluida && a.dataPlanejada < hoje).length;
+
+  container.innerHTML = `
+    <div class="stat-cards">
+      <div class="card stat-card stat-card--total">
+        <span class="stat-value">${temasEstudados}</span>
+        <span class="stat-label">Temas estudados</span>
+      </div>
+      <div class="card stat-card stat-card--scheduled">
+        <span class="stat-value">${questoesRealizadas}</span>
+        <span class="stat-label">Ciclos de questões registrados</span>
+      </div>
+      <div class="card stat-card stat-card--done">
+        <span class="stat-value">${mediaAcertos}%</span>
+        <span class="stat-label">Média de acertos</span>
+      </div>
+      <div class="card stat-card stat-card--pending">
+        <span class="stat-value">${atrasadas}</span>
+        <span class="stat-label">Revisões atrasadas</span>
+      </div>
+      <div class="card stat-card stat-card--total">
+        <span class="stat-value">${d1}</span>
+        <span class="stat-label">Revisões D1 concluídas</span>
+      </div>
+      <div class="card stat-card stat-card--total">
+        <span class="stat-value">${d7}</span>
+        <span class="stat-label">Revisões D7 concluídas</span>
+      </div>
+      <div class="card stat-card stat-card--total">
+        <span class="stat-value">${d30}</span>
+        <span class="stat-label">Revisões D30 concluídas</span>
+      </div>
+    </div>`;
+}
+
+/* ---------- Navegação entre abas principais (Checklist / Cronograma) ---------- */
+document.querySelectorAll(".main-tab").forEach((btn) => {
+  btn.addEventListener("click", () => {
+    document.querySelectorAll(".main-tab").forEach((b) => b.classList.remove("active"));
+    btn.classList.add("active");
+    const view = btn.dataset.view;
+    document.getElementById("view-checklist").classList.toggle("hidden", view !== "checklist");
+    document.getElementById("view-cronograma").classList.toggle("hidden", view !== "cronograma");
+    if (view === "cronograma") renderCronograma();
+  });
+});
+
+document.getElementById("cronograma-tabs").addEventListener("click", (e) => {
+  const btn = e.target.closest(".filter-btn");
+  if (!btn) return;
+  document.querySelectorAll("#cronograma-tabs .filter-btn").forEach((b) => b.classList.remove("active"));
+  btn.classList.add("active");
+  ui.cronogramaTab = btn.dataset.cronoTab;
+  renderCronograma();
+});
+
+/* ---------- Ações sobre atividades (delegação de eventos) ---------- */
+const cronogramaContent = document.getElementById("cronograma-content");
+cronogramaContent.addEventListener("click", (e) => {
+  const btn = e.target.closest("[data-ativ-id]");
+  if (!btn || !btn.dataset.action) return;
+  const ativId = btn.dataset.ativId;
+  const action = btn.dataset.action;
+  if (action === "concluir-ativ") concluirAtividade(ativId);
+  else if (action === "desfazer-ativ") desfazerAtividade(ativId);
+  else if (action === "reagendar-ativ" || action === "editar-ativ") openEditarAtividade(ativId);
+});
+
+cronogramaContent.addEventListener("change", (e) => {
+  if (e.target.dataset.action === "registrar-acertos") {
+    const ativId = e.target.dataset.ativId;
+    const valor = e.target.value === "" ? null : parseInt(e.target.value, 10);
+    registrarAcertosAtividade(ativId, valor);
+    renderCronograma();
+  }
+});
+
+/* ---------- Modal: Editar / Reagendar atividade ---------- */
+const modalAtividade = document.getElementById("modal-atividade");
+const formAtividade = document.getElementById("form-atividade");
+
+function openEditarAtividade(atividadeId) {
+  const atividade = state.cronograma.atividades.find((a) => a.id === atividadeId);
+  if (!atividade) return;
+  const tema = getTema(atividade.temaId);
+  const info = TIPO_ATIVIDADE_INFO[atividade.tipo] || { label: atividade.tipo };
+  document.getElementById("atividade-id").value = atividade.id;
+  document.getElementById("atividade-modal-info").textContent = `${tema ? tema.nome : ""} — ${info.label}`;
+  document.getElementById("atividade-data").value = atividade.dataPlanejada;
+  document.getElementById("atividade-duracao").value = atividade.duracaoMin;
+  modalAtividade.classList.remove("hidden");
+}
+
+document.getElementById("btn-cancel-atividade").addEventListener("click", () => modalAtividade.classList.add("hidden"));
+
+formAtividade.addEventListener("submit", (e) => {
+  e.preventDefault();
+  const id = document.getElementById("atividade-id").value;
+  const novaData = document.getElementById("atividade-data").value;
+  const novaDuracao = parseInt(document.getElementById("atividade-duracao").value, 10);
+  const atividade = state.cronograma.atividades.find((a) => a.id === id);
+  if (!atividade) return;
+  if (novaData) atividade.dataPlanejada = novaData;
+  if (novaDuracao) atividade.duracaoMin = novaDuracao;
+  saveState();
+  modalAtividade.classList.add("hidden");
+  renderCronograma();
+  showToast("Atividade atualizada.");
 });
 
 /* ============================================================
@@ -1047,5 +1547,6 @@ document.querySelectorAll(".modal-overlay").forEach((overlay) => {
 /* ============================================================
    INIT
    ============================================================ */
+bootstrapCronograma();
 renderAll();
 initGoogleClient();

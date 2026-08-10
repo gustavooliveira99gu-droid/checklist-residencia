@@ -21,7 +21,13 @@
   </div>
 </header>
 
+<nav class="main-tabs">
+  <button class="main-tab active" data-view="checklist">📋 Checklist</button>
+  <button class="main-tab" data-view="cronograma">🗓 Cronograma</button>
+</nav>
+
 <main class="container">
+<div id="view-checklist">
 
   <!-- DASHBOARD -->
   <section class="dashboard">
@@ -109,6 +115,25 @@
   <!-- CHECKLIST -->
   <section id="checklist" class="checklist"></section>
 
+</div>
+
+<div id="view-cronograma" class="hidden">
+  <section class="cronograma-header">
+    <h2 class="section-title">Cronograma de Estudos</h2>
+    <p class="cronograma-sub">Segunda, terça e quarta · 3h por dia · ciclo Estudo → Questões → Revisão D1 → D7 → D30</p>
+  </section>
+
+  <div class="filter-buttons cronograma-tabs" id="cronograma-tabs">
+    <button class="filter-btn active" data-crono-tab="hoje">Hoje</button>
+    <button class="filter-btn" data-crono-tab="semana">Esta semana</button>
+    <button class="filter-btn" data-crono-tab="proximas">Próximas revisões</button>
+    <button class="filter-btn" data-crono-tab="atrasadas">Atrasadas</button>
+    <button class="filter-btn" data-crono-tab="progresso">Progresso</button>
+  </div>
+
+  <div id="cronograma-content"></div>
+</div>
+
 </main>
 
 <footer class="app-footer">
@@ -188,6 +213,28 @@
       <button type="button" class="btn btn-ghost" id="btn-cancel-confirm">Cancelar</button>
       <button type="button" class="btn btn-danger" id="btn-confirm-delete">Excluir</button>
     </div>
+  </div>
+</div>
+
+<!-- MODAL: Editar / Reagendar Atividade (Cronograma) -->
+<div id="modal-atividade" class="modal-overlay hidden">
+  <div class="modal">
+    <h3>Editar atividade</h3>
+    <p class="modal-tema-nome" id="atividade-modal-info"></p>
+    <form id="form-atividade">
+      <input type="hidden" id="atividade-id">
+
+      <label class="field-label">Data planejada</label>
+      <input type="date" id="atividade-data" class="field-input" required>
+
+      <label class="field-label">Duração (minutos)</label>
+      <input type="number" id="atividade-duracao" class="field-input" min="5" step="5" required>
+
+      <div class="modal-actions">
+        <button type="button" class="btn btn-ghost" id="btn-cancel-atividade">Cancelar</button>
+        <button type="submit" class="btn btn-primary">Salvar</button>
+      </div>
+    </form>
   </div>
 </div>
 
