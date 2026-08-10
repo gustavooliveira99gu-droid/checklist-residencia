@@ -4,6 +4,17 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>Checklist Residência Médica</title>
+<script>
+  (function () {
+    try {
+      var saved = localStorage.getItem("checklist_residencia_theme");
+      var theme = saved === "dark" || saved === "light"
+        ? saved
+        : (window.matchMedia && window.matchMedia("(prefers-color-scheme: dark)").matches ? "dark" : "light");
+      document.documentElement.setAttribute("data-theme", theme);
+    } catch (e) {}
+  })();
+</script>
 <link rel="stylesheet" href="style.css">
 </head>
 <body>
@@ -16,6 +27,7 @@
     </div>
     <div class="header-actions">
       <button id="btn-add-tema" class="btn btn-primary">+ Adicionar tema</button>
+      <button id="btn-theme-toggle" class="btn btn-ghost btn-icon-only" title="Alternar modo claro/escuro">🌙</button>
       <button id="btn-settings" class="btn btn-ghost" title="Configurações">⚙ Configurações</button>
     </div>
   </div>

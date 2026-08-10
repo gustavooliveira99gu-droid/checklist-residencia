@@ -15,6 +15,30 @@ const GOOGLE_SCOPES =
 /* ---------- STORAGE ---------- */
 const STORAGE_KEY = "checklist_residencia_data_v1";
 
+/* ---------- MODO NOTURNO ---------- */
+const THEME_KEY = "checklist_residencia_theme";
+
+function currentTheme() {
+  return document.documentElement.getAttribute("data-theme") === "dark" ? "dark" : "light";
+}
+function updateThemeToggleIcon(theme) {
+  const btn = document.getElementById("btn-theme-toggle");
+  if (btn) btn.textContent = theme === "dark" ? "☀️" : "🌙";
+}
+function setTheme(theme) {
+  document.documentElement.setAttribute("data-theme", theme);
+  localStorage.setItem(THEME_KEY, theme);
+  updateThemeToggleIcon(theme);
+}
+
+const btnThemeToggle = document.getElementById("btn-theme-toggle");
+if (btnThemeToggle) {
+  updateThemeToggleIcon(currentTheme());
+  btnThemeToggle.addEventListener("click", () => {
+    setTheme(currentTheme() === "dark" ? "light" : "dark");
+  });
+}
+
 /* ---------- QUESTÕES POR TEMA ---------- */
 const QUESTOES_POR_TEMA = 15;
 function novaListaQuestoes() {
