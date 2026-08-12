@@ -1867,6 +1867,20 @@ function agendarSyncAutomatico() {
   }, GH_SYNC_DEBOUNCE_MS);
 }
 
+/* Substitui o state local pelos dados vindos do gist e re-renderiza. */
+function aplicarEstadoRemoto(remoto) {
+  syncApplyingRemote = true;
+  state = remoto;
+  normalizeConfig(state);
+  normalizeTemas(state.temas);
+  normalizeCronograma(state);
+  localStorage.setItem(STORAGE_KEY, JSON.stringify(state));
+  syncApplyingRemote = false;
+  renderAll();
+  setSyncStatus("Dados atualizados a partir de outro aparelho.");
+  showToast("Dados sincronizados do GitHub.");
+}
+
 async function sincronizarAgora() {
   if (!syncConfigurado()) {
     showToast("Cole seu token do GitHub em Configurações primeiro.");
@@ -1881,16 +1895,7 @@ async function sincronizarAgora() {
       await pushParaGithub();
       setSyncStatus("Sincronizado agora (primeiro envio).");
     } else if ((remoto.updatedAt || 0) > (state.updatedAt || 0)) {
-      syncApplyingRemote = true;
-      state = remoto;
-      normalizeConfig(state);
-      normalizeTemas(state.temas);
-      normalizeCronograma(state);
-      localStorage.setItem(STORAGE_KEY, JSON.stringify(state));
-      syncApplyingRemote = false;
-      renderAll();
-      setSyncStatus("Dados atualizados a partir de outro aparelho.");
-      showToast("Dados sincronizados do GitHub.");
+      aplicarEstadoRemoto(remoto);
     } else if ((state.updatedAt || 0) > (remoto.updatedAt || 0)) {
       await pushParaGithub();
       setSyncStatus("Sincronizado agora (enviado deste aparelho).");
@@ -1905,22 +1910,30 @@ async function sincronizarAgora() {
   }
 }
 
+/* Checagem silenciosa: só atualiza a tela se realmente vier algo mais novo,
+   sem escrever "Sincronizando..." nem mexer em nada quando não há novidade. */
+async function checarAtualizacaoSilenciosa() {
+  if (!syncConfigurado() || !getGhGistId() || syncEmAndamento) return;
+  syncEmAndamento = true;
+  try {
+    const remoto = await puxarDoGithub();
+    if (remoto && (remoto.updatedAt || 0) > (state.updatedAt || 0)) {
+      aplicarEstadoRemoto(remoto);
+    }
+  } catch (e) {
+    console.error("Falha na checagem periódica do GitHub:", e);
+  } finally {
+    syncEmAndamento = false;
+  }
+}
+
 /* Puxa uma vez ao abrir o app, sem travar o primeiro render local. */
 function pullDoGithubNaInicializacao() {
   if (!syncConfigurado() || !getGhGistId()) return;
   puxarDoGithub()
     .then((remoto) => {
       if (remoto && (remoto.updatedAt || 0) > (state.updatedAt || 0)) {
-        syncApplyingRemote = true;
-        state = remoto;
-        normalizeConfig(state);
-        normalizeTemas(state.temas);
-        normalizeCronograma(state);
-        localStorage.setItem(STORAGE_KEY, JSON.stringify(state));
-        syncApplyingRemote = false;
-        renderAll();
-        setSyncStatus("Dados atualizados a partir de outro aparelho.");
-        showToast("Dados sincronizados do GitHub.");
+        aplicarEstadoRemoto(remoto);
       } else {
         setSyncStatus(getGhGistId() ? "Sincronizado." : "Ainda não sincronizado.");
       }
@@ -1929,6 +1942,19 @@ function pullDoGithubNaInicializacao() {
       console.error("Falha ao puxar do GitHub na inicialização:", e);
       setSyncStatus("Erro: " + e.message, true);
     });
+}
+
+/* Checa periodicamente enquanto o app está aberto (a cada 1 min, só com a aba
+   visível) e também assim que a aba volta a ficar visível — assim quem deixa
+   o app aberto vê as mudanças de outro aparelho sem precisar recarregar. */
+const GH_POLL_INTERVAL_MS = 60000;
+function iniciarSyncPeriodico() {
+  setInterval(() => {
+    if (document.visibilityState === "visible") checarAtualizacaoSilenciosa();
+  }, GH_POLL_INTERVAL_MS);
+  document.addEventListener("visibilitychange", () => {
+    if (document.visibilityState === "visible") checarAtualizacaoSilenciosa();
+  });
 }
 
 const ghTokenInput = document.getElementById("gh-token-input");
@@ -2631,3 +2657,4 @@ bootstrapCronograma();
 renderAll();
 initGoogleClient();
 pullDoGithubNaInicializacao();
+iniciarSyncPeriodico();
