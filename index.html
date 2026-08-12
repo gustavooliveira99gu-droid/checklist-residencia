@@ -388,9 +388,18 @@
       </p>
       <label class="field-label">Personal Access Token</label>
       <input type="text" id="gh-token-input" class="field-input" placeholder="ghp_..." autocomplete="off" autocapitalize="off" autocorrect="off" spellcheck="false" style="font-family: monospace;">
+
+      <label class="field-label">Gist ID (avançado)</label>
+      <input type="text" id="gh-gistid-input" class="field-input" placeholder="preenchido automaticamente" autocomplete="off" autocapitalize="off" autocorrect="off" spellcheck="false" style="font-family: monospace;">
+      <p class="settings-hint">
+        Se a sincronização pegar dados errados de outro aparelho, use "Criar gist novo" no aparelho com os dados
+        certos, copie o Gist ID que aparecer aqui e cole nesse campo nos outros aparelhos antes de sincronizar.
+      </p>
+
       <p id="sync-status" class="settings-hint">Nenhum token salvo.</p>
       <div class="settings-row">
         <button class="btn btn-secondary" id="btn-sync-agora">Sincronizar agora</button>
+        <button class="btn btn-secondary" id="btn-sync-forcar-novo">Criar gist novo com os dados deste aparelho</button>
         <button class="btn btn-danger-ghost" id="btn-sync-desconectar">Desconectar</button>
       </div>
     </div>

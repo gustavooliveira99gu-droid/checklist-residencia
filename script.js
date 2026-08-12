@@ -1177,6 +1177,8 @@ function refreshSettingsUI() {
   document.getElementById("config-data-prova").value = state.config.dataProva || "";
   const ghInput = document.getElementById("gh-token-input");
   if (ghInput) ghInput.value = getGhToken();
+  const ghGistInput = document.getElementById("gh-gistid-input");
+  if (ghGistInput) ghGistInput.value = getGhGistId();
   setSyncStatus(syncConfigurado() ? (getGhGistId() ? "Conectado." : "Token salvo. Toque em Sincronizar agora.") : "Nenhum token salvo.");
   const statusEl = document.getElementById("google-status");
   if (state.config.googleConnected) {
@@ -1867,6 +1869,36 @@ async function pushParaGithub() {
   }
 }
 
+/* Ignora qualquer gist existente (local ou achado por busca) e cria um novo
+   já com os dados atuais deste aparelho — usado pra "resetar" a sincronização
+   quando sobrou gist antigo/errado de tentativas anteriores. */
+async function criarGistNovoForcado() {
+  if (!syncConfigurado()) {
+    showToast("Cole seu token do GitHub em Configurações primeiro.");
+    return;
+  }
+  setSyncStatus("Criando gist novo...");
+  try {
+    const conteudo = JSON.stringify(state, null, 0);
+    const criado = await ghApi("/gists", {
+      method: "POST",
+      body: JSON.stringify({
+        description: "Checklist Residência Médica — sincronização automática",
+        public: false,
+        files: { [GH_SYNC_FILENAME]: { content: conteudo } },
+      }),
+    });
+    setGhGistId(criado.id);
+    const gistIdInput = document.getElementById("gh-gistid-input");
+    if (gistIdInput) gistIdInput.value = criado.id;
+    setSyncStatus("Gist novo criado. Copie o Gist ID acima e cole nos outros aparelhos antes de sincronizar lá.");
+    showToast("Gist novo criado com os dados deste aparelho.");
+  } catch (e) {
+    console.error(e);
+    setSyncStatus("Erro: " + e.message, true);
+  }
+}
+
 async function puxarDoGithub() {
   const gistId = await resolverGistId();
   if (!gistId) return null;
@@ -1975,7 +2007,9 @@ function iniciarSyncPeriodico() {
 }
 
 const ghTokenInput = document.getElementById("gh-token-input");
+const ghGistIdInput = document.getElementById("gh-gistid-input");
 const btnSyncAgora = document.getElementById("btn-sync-agora");
+const btnSyncForcarNovo = document.getElementById("btn-sync-forcar-novo");
 const btnSyncDesconectar = document.getElementById("btn-sync-desconectar");
 
 if (ghTokenInput) {
@@ -1984,10 +2018,23 @@ if (ghTokenInput) {
     setSyncStatus(syncConfigurado() ? "Token salvo. Toque em Sincronizar agora." : "Nenhum token salvo.");
   });
 }
+if (ghGistIdInput) {
+  ghGistIdInput.addEventListener("change", (e) => setGhGistId(e.target.value.trim()));
+}
+function lerCamposSyncAntesDeAgir() {
+  if (ghTokenInput && ghTokenInput.value.trim()) setGhToken(ghTokenInput.value.trim());
+  if (ghGistIdInput) setGhGistId(ghGistIdInput.value.trim());
+}
 if (btnSyncAgora) {
   btnSyncAgora.addEventListener("click", () => {
-    if (ghTokenInput && ghTokenInput.value.trim()) setGhToken(ghTokenInput.value.trim());
+    lerCamposSyncAntesDeAgir();
     sincronizarAgora();
+  });
+}
+if (btnSyncForcarNovo) {
+  btnSyncForcarNovo.addEventListener("click", () => {
+    lerCamposSyncAntesDeAgir();
+    criarGistNovoForcado();
   });
 }
 if (btnSyncDesconectar) {
@@ -1995,6 +2042,7 @@ if (btnSyncDesconectar) {
     setGhToken("");
     setGhGistId("");
     if (ghTokenInput) ghTokenInput.value = "";
+    if (ghGistIdInput) ghGistIdInput.value = "";
     setSyncStatus("Desconectado deste aparelho.");
     showToast("Sincronização removida deste aparelho (o gist no GitHub não foi apagado).");
   });
