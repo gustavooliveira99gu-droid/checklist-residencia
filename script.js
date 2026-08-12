@@ -151,6 +151,26 @@ function buildSeedData() {
     questoes: novaListaQuestoes(),
   }));
 
+  getEspecialidadeExtras().forEach((grupo) => {
+    const esp = { id: uid("esp"), nome: grupo.nome, cor: grupo.cor };
+    especialidades.push(esp);
+    grupo.temas.forEach((nomeTema) => {
+      temas.push({
+        id: uid("t"),
+        especialidadeId: esp.id,
+        nome: nomeTema,
+        concluido: false,
+        dataEstudo: null,
+        horario: null,
+        duracaoMin: null,
+        eventId: null,
+        calendarId: null,
+        observacoes: "",
+        questoes: novaListaQuestoes(),
+      });
+    });
+  });
+
   return {
     especialidades,
     temas,
@@ -163,6 +183,120 @@ function buildSeedData() {
       atividades: [],
     },
   };
+}
+
+/* ---------- TEMAS ADICIONAIS (Intensivão R1: Cirurgia, GO, Pediatria, Panorama) ----------
+   Lista única usada tanto no seed inicial (instalação nova) quanto na migração
+   automática (addMissingTemas) para quem já tem dados salvos no navegador. ------- */
+function getEspecialidadeExtras() {
+  return [
+    {
+      nome: "Panorama Geral",
+      cor: "#64748b",
+      temas: ["Introdução (Clínica Médica I)", "Panorama do Dia 2 da Clínica", "Introdução (Cirurgia)"],
+    },
+    {
+      nome: "Cirurgia",
+      cor: "#dc2626",
+      temas: [
+        "Trauma — avaliação inicial e trauma de tórax",
+        "Trauma — transição toracoabdominal, abdome, pelve e TCE",
+        "Queimadura",
+        "Risco cirúrgico",
+        "Anestesiologia",
+        "Fios de sutura",
+        "Complicações cirúrgicas",
+        "Cicatrização",
+        "Doenças do esôfago",
+        "Doenças do estômago",
+        "Doença inflamatória intestinal",
+        "Delgado e cólon — pólipos e câncer colorretal",
+        "Abdome agudo",
+        "Pâncreas",
+        "Fígado e vias biliares",
+        "Hérnias",
+        "Urologia",
+        "Proctologia",
+        "Cirurgia vascular",
+        "Cirurgia pediátrica",
+        "Cirurgia bariátrica",
+      ],
+    },
+    {
+      nome: "Ginecologia e Obstetrícia",
+      cor: "#ec4899",
+      temas: [
+        "Endocrinoginecologia e infertilidade",
+        "Anticoncepção",
+        "Sangramento uterino anormal e endometriose",
+        "IST",
+        "Uroginecologia (incontinência e prolapso)",
+        "Neoplasias ginecológicas",
+        "Diagnóstico de gravidez e modificações do organismo",
+        "Pré-natal, estática fetal e indução de parto",
+        "Parto e prematuridade",
+        "Hemorragias na primeira metade",
+        "Hemorragias na segunda metade e doença hemolítica perinatal",
+        "Doenças clínicas na gestação",
+        "Sofrimento fetal",
+        "Fórcipe, endometrite e hemorragia puerperal",
+      ],
+    },
+    {
+      nome: "Pediatria",
+      cor: "#0ea5e9",
+      temas: [
+        "Aleitamento materno e suplementação de micronutrientes",
+        "Doenças gastrointestinais",
+        "IRA: infecções das vias aéreas superiores",
+        "IRA: doenças com estridor",
+        "IRA: infecções das vias aéreas inferiores",
+        "Crescimento e seus distúrbios",
+        "Puberdade e seus distúrbios",
+        "Neonatologia: infecções congênitas e distúrbios respiratórios",
+        "Neonatologia: icterícia neonatal e reanimação neonatal",
+        "Imunizações",
+        "Doenças exantemáticas",
+        "Infecção do trato urinário",
+      ],
+    },
+  ];
+}
+
+/* Migração idempotente: adiciona especialidades/temas que ainda não existem
+   nos dados já salvos no navegador, sem apagar ou alterar nada existente. */
+function addMissingTemas() {
+  const grupos = getEspecialidadeExtras();
+  let mudou = false;
+  grupos.forEach((grupo) => {
+    let esp = state.especialidades.find((e) => e.nome.trim().toLowerCase() === grupo.nome.trim().toLowerCase());
+    if (!esp) {
+      esp = { id: uid("esp"), nome: grupo.nome, cor: grupo.cor };
+      state.especialidades.push(esp);
+      mudou = true;
+    }
+    grupo.temas.forEach((nomeTema) => {
+      const jaExiste = state.temas.some(
+        (t) => t.especialidadeId === esp.id && t.nome.trim().toLowerCase() === nomeTema.trim().toLowerCase()
+      );
+      if (jaExiste) return;
+      state.temas.push({
+        id: uid("t"),
+        especialidadeId: esp.id,
+        nome: nomeTema,
+        concluido: false,
+        dataEstudo: null,
+        horario: null,
+        duracaoMin: null,
+        eventId: null,
+        calendarId: null,
+        observacoes: "",
+        questoes: novaListaQuestoes(),
+      });
+      mudou = true;
+    });
+  });
+  if (mudou) saveState();
 }
 
 /* ---------- STATE ---------- */
@@ -881,6 +1015,7 @@ document.getElementById("import-file-input").addEventListener("change", (e) => {
       normalizeTemas(parsed.temas);
       normalizeCronograma(parsed);
       state = parsed;
+      addMissingTemas();
       bootstrapCronograma();
       saveState();
       renderAll();
@@ -1571,6 +1706,7 @@ document.querySelectorAll(".modal-overlay").forEach((overlay) => {
 /* ============================================================
    INIT
    ============================================================ */
+addMissingTemas();
 bootstrapCronograma();
 renderAll();
 initGoogleClient();
