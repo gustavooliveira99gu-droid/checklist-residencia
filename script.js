@@ -1899,6 +1899,30 @@ async function criarGistNovoForcado() {
   }
 }
 
+/* Traz os dados do gist e substitui os locais sem comparar updatedAt —
+   usado quando o "mais novo por data" não é o correto (ex.: aparelho com
+   dados incompletos que teve o updatedAt atualizado por engano). */
+async function forcarPuxarDoGithub() {
+  if (!syncConfigurado()) {
+    showToast("Cole seu token do GitHub em Configurações primeiro.");
+    return;
+  }
+  if (!confirm("Isso vai substituir os dados deste aparelho pelos que estão no GitHub. Continuar?")) return;
+  setSyncStatus("Puxando do GitHub...");
+  try {
+    const remoto = await puxarDoGithub();
+    if (!remoto) {
+      setSyncStatus("Nenhum gist encontrado com esse token/Gist ID.", true);
+      return;
+    }
+    aplicarEstadoRemoto(remoto);
+    setSyncStatus("Dados substituídos pelos do GitHub.");
+  } catch (e) {
+    console.error(e);
+    setSyncStatus("Erro: " + e.message, true);
+  }
+}
+
 async function puxarDoGithub() {
   const gistId = await resolverGistId();
   if (!gistId) return null;
@@ -2010,6 +2034,7 @@ const ghTokenInput = document.getElementById("gh-token-input");
 const ghGistIdInput = document.getElementById("gh-gistid-input");
 const btnSyncAgora = document.getElementById("btn-sync-agora");
 const btnSyncForcarNovo = document.getElementById("btn-sync-forcar-novo");
+const btnSyncForcarPuxar = document.getElementById("btn-sync-forcar-puxar");
 const btnSyncDesconectar = document.getElementById("btn-sync-desconectar");
 
 if (ghTokenInput) {
@@ -2035,6 +2060,12 @@ if (btnSyncForcarNovo) {
   btnSyncForcarNovo.addEventListener("click", () => {
     lerCamposSyncAntesDeAgir();
     criarGistNovoForcado();
+  });
+}
+if (btnSyncForcarPuxar) {
+  btnSyncForcarPuxar.addEventListener("click", () => {
+    lerCamposSyncAntesDeAgir();
+    forcarPuxarDoGithub();
   });
 }
 if (btnSyncDesconectar) {
