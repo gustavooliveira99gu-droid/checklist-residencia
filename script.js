@@ -2649,17 +2649,19 @@ function renderDashCalendario() {
     const dataStr = `${ano}-${pad(mes + 1)}-${pad(d)}`;
     const ativsDia = (porDia[dataStr] || []).sort(ativPrioridadeSort);
     const isHoje = dataStr === hoje;
-    const visiveis = ativsDia.slice(0, 4);
+    const visiveis = ativsDia.slice(0, 3);
     const chips = visiveis
       .map((a) => {
         const atrasada = !a.concluida && a.dataPlanejada < hoje;
         const ehEstudo = a.tipo === "estudo" || a.tipo === "questoes";
         const cls = a.concluida ? "concluido" : atrasada ? "atrasado" : ehEstudo ? "estudo" : "revisao";
         const tema = getTema(a.temaId);
-        return `<button type="button" class="dash-cal-chip dash-cal-chip--${cls}" data-action="abrir-tema-cal" data-tema-id="${a.temaId}" title="${escapeHtml(tema ? tema.nome : "")}"></button>`;
+        const nome = tema ? tema.nome : "";
+        const info = TIPO_ATIVIDADE_INFO[a.tipo] || {};
+        return `<button type="button" class="dash-cal-chip dash-cal-chip--${cls}" data-action="abrir-tema-cal" data-tema-id="${a.temaId}" title="${escapeHtml(info.label || "")}${info.label ? " — " : ""}${escapeHtml(nome)}">${info.icon || ""} ${escapeHtml(nome)}</button>`;
       })
       .join("");
-    const extra = ativsDia.length > 4 ? `<span class="dash-cal-more">+${ativsDia.length - 4}</span>` : "";
+    const extra = ativsDia.length > 3 ? `<span class="dash-cal-more">+${ativsDia.length - 3} mais</span>` : "";
     html += `<div class="dash-cal-cell ${isHoje ? "dash-cal-hoje" : ""}"><span class="dash-cal-daynum">${d}</span><div class="dash-cal-chips">${chips}${extra}</div></div>`;
   }
   html += `</div>`;
