@@ -1783,7 +1783,7 @@ let syncAutoTimer = null;
 let syncEmAndamento = false;
 
 function getGhToken() {
-  return localStorage.getItem(GH_TOKEN_KEY) || "";
+  return (localStorage.getItem(GH_TOKEN_KEY) || "").trim();
 }
 function setGhToken(token) {
   if (token) localStorage.setItem(GH_TOKEN_KEY, token);
@@ -1942,7 +1942,10 @@ if (ghTokenInput) {
   });
 }
 if (btnSyncAgora) {
-  btnSyncAgora.addEventListener("click", () => sincronizarAgora());
+  btnSyncAgora.addEventListener("click", () => {
+    if (ghTokenInput && ghTokenInput.value.trim()) setGhToken(ghTokenInput.value.trim());
+    sincronizarAgora();
+  });
 }
 if (btnSyncDesconectar) {
   btnSyncDesconectar.addEventListener("click", () => {
