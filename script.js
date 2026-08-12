@@ -70,6 +70,7 @@ function normalizeConfig(parsed) {
     parsed.config.provaPrincipal = "fmabc";
   }
   if (parsed.config.dataProva === undefined) parsed.config.dataProva = null;
+  if (typeof parsed.updatedAt !== "number") parsed.updatedAt = 0;
 }
 
 /* ---------- SEED DATA (usada apenas na primeira execução) ---------- */
@@ -194,6 +195,7 @@ function buildSeedData() {
   return {
     especialidades,
     temas,
+    updatedAt: 0,
     config: {
       googleConnected: false,
       selectedCalendarId: null,
@@ -465,7 +467,9 @@ function loadState() {
 }
 
 function saveState() {
+  state.updatedAt = Date.now();
   localStorage.setItem(STORAGE_KEY, JSON.stringify(state));
+  agendarSyncAutomatico();
 }
 
 function uid(prefix) {
@@ -1171,6 +1175,9 @@ if (configDataProva) {
 function refreshSettingsUI() {
   document.getElementById("config-prova-principal").value = state.config.provaPrincipal || "fmabc";
   document.getElementById("config-data-prova").value = state.config.dataProva || "";
+  const ghInput = document.getElementById("gh-token-input");
+  if (ghInput) ghInput.value = getGhToken();
+  setSyncStatus(syncConfigurado() ? (getGhGistId() ? "Conectado." : "Token salvo. Toque em Sincronizar agora.") : "Nenhum token salvo.");
   const statusEl = document.getElementById("google-status");
   if (state.config.googleConnected) {
     statusEl.textContent = "Conectado ao Google";
@@ -1758,6 +1765,189 @@ formAtividade.addEventListener("submit", (e) => {
   renderCronograma();
   showToast("Atividade atualizada.");
 });
+
+/* ============================================================
+   SINCRONIZAÇÃO ENTRE DISPOSITIVOS (GitHub Gist)
+   Guarda uma cópia do state num Gist secreto do GitHub. Cada aparelho
+   com o mesmo token consegue puxar/enviar os dados. Token e ID do gist
+   ficam fora do `state` (chaves próprias no localStorage), então nunca
+   entram no backup exportado nem no próprio conteúdo sincronizado.
+   Estratégia: last-write-wins por `state.updatedAt`. ------- */
+const GH_TOKEN_KEY = "checklist_residencia_gh_token";
+const GH_GIST_ID_KEY = "checklist_residencia_gh_gist_id";
+const GH_SYNC_FILENAME = "checklist-residencia-sync.json";
+const GH_SYNC_DEBOUNCE_MS = 4000;
+
+let syncApplyingRemote = false;
+let syncAutoTimer = null;
+let syncEmAndamento = false;
+
+function getGhToken() {
+  return localStorage.getItem(GH_TOKEN_KEY) || "";
+}
+function setGhToken(token) {
+  if (token) localStorage.setItem(GH_TOKEN_KEY, token);
+  else localStorage.removeItem(GH_TOKEN_KEY);
+}
+function getGhGistId() {
+  return localStorage.getItem(GH_GIST_ID_KEY) || "";
+}
+function setGhGistId(id) {
+  if (id) localStorage.setItem(GH_GIST_ID_KEY, id);
+  else localStorage.removeItem(GH_GIST_ID_KEY);
+}
+function syncConfigurado() {
+  return !!getGhToken();
+}
+
+function setSyncStatus(msg, isError) {
+  const el = document.getElementById("sync-status");
+  if (!el) return;
+  el.textContent = msg;
+  el.classList.toggle("sync-error", !!isError);
+}
+
+async function ghApi(path, options) {
+  const resp = await fetch("https://api.github.com" + path, {
+    ...options,
+    headers: {
+      Authorization: "token " + getGhToken(),
+      Accept: "application/vnd.github+json",
+      ...(options && options.headers),
+    },
+  });
+  if (!resp.ok) {
+    const body = await resp.text().catch(() => "");
+    throw new Error(`GitHub API ${resp.status}: ${body.slice(0, 200)}`);
+  }
+  return resp.json();
+}
+
+async function pushParaGithub() {
+  if (!syncConfigurado()) return;
+  const conteudo = JSON.stringify(state, null, 0);
+  const gistId = getGhGistId();
+  if (!gistId) {
+    const criado = await ghApi("/gists", {
+      method: "POST",
+      body: JSON.stringify({
+        description: "Checklist Residência Médica — sincronização automática",
+        public: false,
+        files: { [GH_SYNC_FILENAME]: { content: conteudo } },
+      }),
+    });
+    setGhGistId(criado.id);
+  } else {
+    await ghApi("/gists/" + gistId, {
+      method: "PATCH",
+      body: JSON.stringify({ files: { [GH_SYNC_FILENAME]: { content: conteudo } } }),
+    });
+  }
+}
+
+async function puxarDoGithub() {
+  const gistId = getGhGistId();
+  if (!gistId) return null;
+  const gist = await ghApi("/gists/" + gistId, { method: "GET" });
+  const file = gist.files && gist.files[GH_SYNC_FILENAME];
+  if (!file || !file.content) return null;
+  return JSON.parse(file.content);
+}
+
+function agendarSyncAutomatico() {
+  if (!syncConfigurado() || syncApplyingRemote) return;
+  clearTimeout(syncAutoTimer);
+  syncAutoTimer = setTimeout(() => {
+    pushParaGithub().catch((e) => console.error("Falha ao sincronizar com o GitHub:", e));
+  }, GH_SYNC_DEBOUNCE_MS);
+}
+
+async function sincronizarAgora() {
+  if (!syncConfigurado()) {
+    showToast("Cole seu token do GitHub em Configurações primeiro.");
+    return;
+  }
+  if (syncEmAndamento) return;
+  syncEmAndamento = true;
+  setSyncStatus("Sincronizando...");
+  try {
+    const remoto = await puxarDoGithub();
+    if (!remoto) {
+      await pushParaGithub();
+      setSyncStatus("Sincronizado agora (primeiro envio).");
+    } else if ((remoto.updatedAt || 0) > (state.updatedAt || 0)) {
+      syncApplyingRemote = true;
+      state = remoto;
+      normalizeConfig(state);
+      normalizeTemas(state.temas);
+      normalizeCronograma(state);
+      localStorage.setItem(STORAGE_KEY, JSON.stringify(state));
+      syncApplyingRemote = false;
+      renderAll();
+      setSyncStatus("Dados atualizados a partir de outro aparelho.");
+      showToast("Dados sincronizados do GitHub.");
+    } else if ((state.updatedAt || 0) > (remoto.updatedAt || 0)) {
+      await pushParaGithub();
+      setSyncStatus("Sincronizado agora (enviado deste aparelho).");
+    } else {
+      setSyncStatus("Já estava tudo sincronizado.");
+    }
+  } catch (e) {
+    console.error(e);
+    setSyncStatus("Erro ao sincronizar. Confira o token.", true);
+  } finally {
+    syncEmAndamento = false;
+  }
+}
+
+/* Puxa uma vez ao abrir o app, sem travar o primeiro render local. */
+function pullDoGithubNaInicializacao() {
+  if (!syncConfigurado() || !getGhGistId()) return;
+  puxarDoGithub()
+    .then((remoto) => {
+      if (remoto && (remoto.updatedAt || 0) > (state.updatedAt || 0)) {
+        syncApplyingRemote = true;
+        state = remoto;
+        normalizeConfig(state);
+        normalizeTemas(state.temas);
+        normalizeCronograma(state);
+        localStorage.setItem(STORAGE_KEY, JSON.stringify(state));
+        syncApplyingRemote = false;
+        renderAll();
+        setSyncStatus("Dados atualizados a partir de outro aparelho.");
+        showToast("Dados sincronizados do GitHub.");
+      } else {
+        setSyncStatus(getGhGistId() ? "Sincronizado." : "Ainda não sincronizado.");
+      }
+    })
+    .catch((e) => {
+      console.error("Falha ao puxar do GitHub na inicialização:", e);
+      setSyncStatus("Não foi possível verificar o GitHub agora.", true);
+    });
+}
+
+const ghTokenInput = document.getElementById("gh-token-input");
+const btnSyncAgora = document.getElementById("btn-sync-agora");
+const btnSyncDesconectar = document.getElementById("btn-sync-desconectar");
+
+if (ghTokenInput) {
+  ghTokenInput.addEventListener("change", (e) => {
+    setGhToken(e.target.value.trim());
+    setSyncStatus(syncConfigurado() ? "Token salvo. Toque em Sincronizar agora." : "Nenhum token salvo.");
+  });
+}
+if (btnSyncAgora) {
+  btnSyncAgora.addEventListener("click", () => sincronizarAgora());
+}
+if (btnSyncDesconectar) {
+  btnSyncDesconectar.addEventListener("click", () => {
+    setGhToken("");
+    setGhGistId("");
+    if (ghTokenInput) ghTokenInput.value = "";
+    setSyncStatus("Desconectado deste aparelho.");
+    showToast("Sincronização removida deste aparelho (o gist no GitHub não foi apagado).");
+  });
+}
 
 /* ============================================================
    GOOGLE CALENDAR INTEGRATION (Google Identity Services)
@@ -2432,3 +2622,4 @@ seedIncidenciaIniciais();
 bootstrapCronograma();
 renderAll();
 initGoogleClient();
+pullDoGithubNaInicializacao();
