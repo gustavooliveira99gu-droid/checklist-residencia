@@ -1813,12 +1813,17 @@ async function ghApi(path, options) {
     headers: {
       Authorization: "token " + getGhToken(),
       Accept: "application/vnd.github+json",
+      "Content-Type": "application/json",
       ...(options && options.headers),
     },
   });
   if (!resp.ok) {
     const body = await resp.text().catch(() => "");
-    throw new Error(`GitHub API ${resp.status}: ${body.slice(0, 200)}`);
+    let msg = body;
+    try {
+      msg = JSON.parse(body).message || body;
+    } catch (e) {}
+    throw new Error(`GitHub API ${resp.status}: ${msg.slice(0, 200)}`);
   }
   return resp.json();
 }
@@ -1894,7 +1899,7 @@ async function sincronizarAgora() {
     }
   } catch (e) {
     console.error(e);
-    setSyncStatus("Erro ao sincronizar. Confira o token.", true);
+    setSyncStatus("Erro: " + e.message, true);
   } finally {
     syncEmAndamento = false;
   }
@@ -1922,7 +1927,7 @@ function pullDoGithubNaInicializacao() {
     })
     .catch((e) => {
       console.error("Falha ao puxar do GitHub na inicialização:", e);
-      setSyncStatus("Não foi possível verificar o GitHub agora.", true);
+      setSyncStatus("Erro: " + e.message, true);
     });
 }
 
