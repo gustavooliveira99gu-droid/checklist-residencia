@@ -1828,10 +1828,27 @@ async function ghApi(path, options) {
   return resp.json();
 }
 
+/* Procura, entre os gists da própria conta, um que já tenha o arquivo de
+   sincronização — assim o 2º/3º aparelho encontra o mesmo gist do 1º
+   automaticamente, em vez de criar um gist novo e isolado pra cada um. */
+async function encontrarGistExistente() {
+  const gists = await ghApi("/gists", { method: "GET" });
+  const achado = gists.find((g) => g.files && g.files[GH_SYNC_FILENAME]);
+  return achado ? achado.id : null;
+}
+
+async function resolverGistId() {
+  let gistId = getGhGistId();
+  if (gistId) return gistId;
+  gistId = await encontrarGistExistente();
+  if (gistId) setGhGistId(gistId);
+  return gistId;
+}
+
 async function pushParaGithub() {
   if (!syncConfigurado()) return;
   const conteudo = JSON.stringify(state, null, 0);
-  const gistId = getGhGistId();
+  const gistId = await resolverGistId();
   if (!gistId) {
     const criado = await ghApi("/gists", {
       method: "POST",
@@ -1851,7 +1868,7 @@ async function pushParaGithub() {
 }
 
 async function puxarDoGithub() {
-  const gistId = getGhGistId();
+  const gistId = await resolverGistId();
   if (!gistId) return null;
   const gist = await ghApi("/gists/" + gistId, { method: "GET" });
   const file = gist.files && gist.files[GH_SYNC_FILENAME];
@@ -1913,7 +1930,7 @@ async function sincronizarAgora() {
 /* Checagem silenciosa: só atualiza a tela se realmente vier algo mais novo,
    sem escrever "Sincronizando..." nem mexer em nada quando não há novidade. */
 async function checarAtualizacaoSilenciosa() {
-  if (!syncConfigurado() || !getGhGistId() || syncEmAndamento) return;
+  if (!syncConfigurado() || syncEmAndamento) return;
   syncEmAndamento = true;
   try {
     const remoto = await puxarDoGithub();
@@ -1929,7 +1946,7 @@ async function checarAtualizacaoSilenciosa() {
 
 /* Puxa uma vez ao abrir o app, sem travar o primeiro render local. */
 function pullDoGithubNaInicializacao() {
-  if (!syncConfigurado() || !getGhGistId()) return;
+  if (!syncConfigurado()) return;
   puxarDoGithub()
     .then((remoto) => {
       if (remoto && (remoto.updatedAt || 0) > (state.updatedAt || 0)) {
