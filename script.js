@@ -51,7 +51,24 @@ function normalizeTemas(temas) {
     } else {
       t.questoes = t.questoes.map((v) => !!v);
     }
+    if (!t.incidencia || typeof t.incidencia !== "object") {
+      t.incidencia = { fmabc: 0, susSp: 0 };
+    } else {
+      if (typeof t.incidencia.fmabc !== "number" || Number.isNaN(t.incidencia.fmabc)) t.incidencia.fmabc = 0;
+      if (typeof t.incidencia.susSp !== "number" || Number.isNaN(t.incidencia.susSp)) t.incidencia.susSp = 0;
+    }
   });
+}
+
+/* Garante state.config.provaPrincipal / dataProva sem apagar campos já existentes (ex.: Google Agenda). */
+function normalizeConfig(parsed) {
+  if (!parsed.config) {
+    parsed.config = { googleConnected: false, selectedCalendarId: null, selectedCalendarName: null };
+  }
+  if (parsed.config.provaPrincipal !== "fmabc" && parsed.config.provaPrincipal !== "susSp" && parsed.config.provaPrincipal !== "personalizada") {
+    parsed.config.provaPrincipal = "fmabc";
+  }
+  if (parsed.config.dataProva === undefined) parsed.config.dataProva = null;
 }
 
 /* ---------- SEED DATA (usada apenas na primeira execução) ---------- */
@@ -149,6 +166,7 @@ function buildSeedData() {
     calendarId: null,
     observacoes: "",
     questoes: novaListaQuestoes(),
+    incidencia: { fmabc: 0, susSp: 0 },
   }));
 
   getEspecialidadeExtras().forEach((grupo) => {
@@ -167,6 +185,7 @@ function buildSeedData() {
         calendarId: null,
         observacoes: "",
         questoes: novaListaQuestoes(),
+        incidencia: { fmabc: 0, susSp: 0 },
       });
     });
   });
@@ -178,6 +197,8 @@ function buildSeedData() {
       googleConnected: false,
       selectedCalendarId: null,
       selectedCalendarName: null,
+      provaPrincipal: "fmabc",
+      dataProva: null,
     },
     cronograma: {
       atividades: [],
@@ -292,6 +313,7 @@ function addMissingTemas() {
         calendarId: null,
         observacoes: "",
         questoes: novaListaQuestoes(),
+        incidencia: { fmabc: 0, susSp: 0 },
       });
       mudou = true;
     });
@@ -312,7 +334,7 @@ function loadState() {
     }
     const parsed = JSON.parse(raw);
     if (!parsed.especialidades || !parsed.temas) throw new Error("formato inválido");
-    if (!parsed.config) parsed.config = { googleConnected: false, selectedCalendarId: null, selectedCalendarName: null };
+    normalizeConfig(parsed);
     normalizeTemas(parsed.temas);
     normalizeCronograma(parsed);
     localStorage.setItem(STORAGE_KEY, JSON.stringify(parsed));
@@ -390,6 +412,7 @@ function renderAll() {
   renderEspecialidadeFilterOptions();
   renderChecklist();
   renderCronograma();
+  renderDashboardTab();
 }
 
 const PROGRESS_RING_RADIUS = 54;
@@ -519,6 +542,12 @@ function renderChecklist() {
           metaParts.push(
             `<span class="badge-questoes ${isQuestoesComplete ? "completo" : ""}" id="questoes-badge-${t.id}">📝 Questões: ${doneQ}/${QUESTOES_POR_TEMA}${isQuestoesComplete ? " ✓" : ""}</span>`
           );
+          if (!t.concluido) {
+            const prio = calcularPrioridadeTema(t);
+            metaParts.push(
+              `<button type="button" class="badge-prioridade ${prio.nivel.toLowerCase()}" data-action="ver-prioridade" data-tema-id="${t.id}">🎯 Prioridade ${prio.score} · ${prio.nivel}</button>`
+            );
+          }
           return `
           <div class="tema-block">
             <div class="tema-row ${t.concluido ? "concluido" : ""}" data-tema-id="${t.id}">
@@ -607,6 +636,7 @@ document.getElementById("checklist").addEventListener("click", (e) => {
   else if (action === "excluir") openConfirmDelete(temaId);
   else if (action === "agendar") openAgendar(temaId);
   else if (action === "questoes") toggleQuestoesPanel(temaId);
+  else if (action === "ver-prioridade") openPrioridadeModal(temaId);
 });
 
 document.getElementById("checklist").addEventListener("change", (e) => {
@@ -715,6 +745,8 @@ function openAddTema() {
   document.getElementById("tema-data").value = "";
   document.getElementById("nova-especialidade-nome").value = "";
   document.getElementById("nova-especialidade-wrap").classList.add("hidden");
+  document.getElementById("tema-incidencia-fmabc").value = "";
+  document.getElementById("tema-incidencia-sussp").value = "";
   selectEspecialidade.value = state.especialidades[0] ? state.especialidades[0].id : "__nova__";
   modalTema.classList.remove("hidden");
 }
@@ -729,8 +761,19 @@ function openEditTema(temaId) {
   document.getElementById("tema-data").value = tema.dataEstudo || "";
   document.getElementById("nova-especialidade-nome").value = "";
   document.getElementById("nova-especialidade-wrap").classList.add("hidden");
+  document.getElementById("tema-incidencia-fmabc").value = tema.incidencia ? tema.incidencia.fmabc || "" : "";
+  document.getElementById("tema-incidencia-sussp").value = tema.incidencia ? tema.incidencia.susSp || "" : "";
   selectEspecialidade.value = tema.especialidadeId;
   modalTema.classList.remove("hidden");
+}
+
+function lerIncidenciaDoForm() {
+  const fmabc = parseInt(document.getElementById("tema-incidencia-fmabc").value, 10);
+  const susSp = parseInt(document.getElementById("tema-incidencia-sussp").value, 10);
+  return {
+    fmabc: Number.isNaN(fmabc) ? 0 : Math.max(0, Math.min(100, fmabc)),
+    susSp: Number.isNaN(susSp) ? 0 : Math.max(0, Math.min(100, susSp)),
+  };
 }
 
 document.getElementById("btn-add-tema").addEventListener("click", openAddTema);
@@ -762,6 +805,7 @@ formTema.addEventListener("submit", async (e) => {
     tema.especialidadeId = especialidadeId;
     const dataChanged = tema.dataEstudo !== novaData;
     tema.dataEstudo = novaData;
+    tema.incidencia = lerIncidenciaDoForm();
     if (!novaData) {
       tema.horario = null;
       tema.duracaoMin = null;
@@ -791,6 +835,7 @@ formTema.addEventListener("submit", async (e) => {
       calendarId: null,
       observacoes: "",
       questoes: novaListaQuestoes(),
+      incidencia: lerIncidenciaDoForm(),
     };
     state.temas.push(novoTema);
     agendarEstudoTema(novoTema);
@@ -960,7 +1005,28 @@ document.getElementById("btn-settings").addEventListener("click", () => {
 });
 document.getElementById("btn-close-settings").addEventListener("click", () => modalSettings.classList.add("hidden"));
 
+const configProvaPrincipal = document.getElementById("config-prova-principal");
+if (configProvaPrincipal) {
+  configProvaPrincipal.addEventListener("change", (e) => {
+    state.config.provaPrincipal = e.target.value;
+    saveState();
+    renderAll();
+    showToast("Prova principal atualizada. Prioridades recalculadas.");
+  });
+}
+
+const configDataProva = document.getElementById("config-data-prova");
+if (configDataProva) {
+  configDataProva.addEventListener("change", (e) => {
+    state.config.dataProva = e.target.value || null;
+    saveState();
+    renderAll();
+  });
+}
+
 function refreshSettingsUI() {
+  document.getElementById("config-prova-principal").value = state.config.provaPrincipal || "fmabc";
+  document.getElementById("config-data-prova").value = state.config.dataProva || "";
   const statusEl = document.getElementById("google-status");
   if (state.config.googleConnected) {
     statusEl.textContent = "Conectado ao Google";
@@ -1011,7 +1077,7 @@ document.getElementById("import-file-input").addEventListener("change", (e) => {
     try {
       const parsed = JSON.parse(evt.target.result);
       if (!parsed.especialidades || !parsed.temas) throw new Error("Arquivo inválido.");
-      if (!parsed.config) parsed.config = { googleConnected: false, selectedCalendarId: null, selectedCalendarName: null };
+      normalizeConfig(parsed);
       normalizeTemas(parsed.temas);
       normalizeCronograma(parsed);
       state = parsed;
@@ -1183,6 +1249,22 @@ function bootstrapCronograma() {
   if (mudou) saveState();
 }
 
+/* ---------- Revisão adaptativa: ajusta a PRÓXIMA revisão pendente conforme o desempenho ----------
+   <60% antecipa · 60–79% mantém o intervalo · ≥80% amplia moderadamente.
+   Só mexe em revisões futuras (não concluídas) e nunca cria uma nova (evita duplicar). ------- */
+function ajustarProximaRevisaoPorDesempenho(temaId, tipoAtual, percentual, dataBase) {
+  if (percentual == null || !dataBase) return;
+  const proximoTipo = tipoAtual === "revisao_d1" ? "revisao_d7" : tipoAtual === "revisao_d7" ? "revisao_d30" : null;
+  if (!proximoTipo) return;
+  const proxima = state.cronograma.atividades.find((a) => a.temaId === temaId && a.tipo === proximoTipo && !a.concluida);
+  if (!proxima) return;
+  const diasPadrao = proximoTipo === "revisao_d7" ? 7 : 30;
+  let diasAjustados = diasPadrao;
+  if (percentual < 60) diasAjustados = Math.max(1, Math.round(diasPadrao * 0.6));
+  else if (percentual >= 80) diasAjustados = Math.round(diasPadrao * 1.25);
+  proxima.dataPlanejada = proximoDiaDisponivel(addDaysStr(dataBase, diasAjustados));
+}
+
 /* ---------- Ações sobre atividades ---------- */
 function concluirAtividade(atividadeId) {
   const atividade = state.cronograma.atividades.find((a) => a.id === atividadeId);
@@ -1190,9 +1272,13 @@ function concluirAtividade(atividadeId) {
   atividade.concluida = true;
   atividade.dataConclusao = todayStr();
   if (atividade.tipo === "estudo") gerarRevisoes(atividade);
+  else if (atividade.tipo.indexOf("revisao_") === 0 && atividade.percentual != null) {
+    ajustarProximaRevisaoPorDesempenho(atividade.temaId, atividade.tipo, atividade.percentual, atividade.dataConclusao);
+  }
   saveState();
   renderCronograma();
   renderDashboard();
+  renderDashboardTab();
 }
 function desfazerAtividade(atividadeId) {
   const atividade = state.cronograma.atividades.find((a) => a.id === atividadeId);
@@ -1214,6 +1300,9 @@ function registrarAcertosAtividade(atividadeId, valor) {
     atividade.acertos = clamped;
     atividade.erros = QUESTOES_POR_TEMA - clamped;
     atividade.percentual = Math.round((clamped / QUESTOES_POR_TEMA) * 100);
+    if (atividade.concluida && atividade.tipo.indexOf("revisao_") === 0) {
+      ajustarProximaRevisaoPorDesempenho(atividade.temaId, atividade.tipo, atividade.percentual, atividade.dataConclusao);
+    }
   }
   saveState();
 }
@@ -1454,7 +1543,9 @@ document.querySelectorAll(".main-tab").forEach((btn) => {
     const view = btn.dataset.view;
     document.getElementById("view-checklist").classList.toggle("hidden", view !== "checklist");
     document.getElementById("view-cronograma").classList.toggle("hidden", view !== "cronograma");
+    document.getElementById("view-dashboard").classList.toggle("hidden", view !== "dashboard");
     if (view === "cronograma") renderCronograma();
+    else if (view === "dashboard") renderDashboardTab();
   });
 });
 
@@ -1692,6 +1783,353 @@ async function deleteGoogleEvent(tema) {
   }
   tema.eventId = null;
   tema.calendarId = null;
+}
+
+/* ============================================================
+   PRIORIDADE INTELIGENTE
+   score = 40% incidência + 30% deficiência + 20% revisão + 10% urgência da prova
+   ============================================================ */
+function diasEntre(dataInicioStr, dataFimStr) {
+  const a = parseLocalDate(dataInicioStr);
+  const b = parseLocalDate(dataFimStr);
+  return Math.round((b - a) / 86400000);
+}
+
+function getIncidenciaTema(tema, prova) {
+  if (!tema.incidencia) return 0;
+  if (prova === "personalizada") {
+    return Math.round(((tema.incidencia.fmabc || 0) + (tema.incidencia.susSp || 0)) / 2);
+  }
+  return tema.incidencia[prova] || 0;
+}
+
+function getDesempenhoRecenteTema(temaId) {
+  const hist = getAtividadesDoTema(temaId)
+    .filter((a) => a.percentual != null)
+    .sort((a, b) => (a.dataConclusao || "").localeCompare(b.dataConclusao || ""));
+  return hist.length ? hist[hist.length - 1].percentual : null;
+}
+
+function getRevisaoInfoTema(temaId) {
+  const hoje = todayStr();
+  const pendentes = getAtividadesDoTema(temaId).filter((a) => !a.concluida && a.tipo.indexOf("revisao_") === 0);
+  if (!pendentes.length) return { score: 0, label: "Nenhuma revisão pendente" };
+  pendentes.sort((a, b) => a.dataPlanejada.localeCompare(b.dataPlanejada));
+  const proxima = pendentes[0];
+  const diffDias = diasEntre(hoje, proxima.dataPlanejada);
+  const nomeTipo = TIPO_ATIVIDADE_INFO[proxima.tipo] ? TIPO_ATIVIDADE_INFO[proxima.tipo].label : proxima.tipo;
+  const score = diffDias < 0 ? 100 : Math.max(0, 100 - diffDias * 15);
+  const label = diffDias < 0 ? `${nomeTipo} atrasada` : diffDias === 0 ? `${nomeTipo} hoje` : `${nomeTipo} em ${diffDias}d`;
+  return { score, label };
+}
+
+function getUrgenciaProva() {
+  if (!state.config.dataProva) return { score: 0, label: "Data da prova não definida" };
+  const diffDias = diasEntre(todayStr(), state.config.dataProva);
+  if (diffDias <= 0) return { score: 100, label: "Prova hoje/atrasada" };
+  const score = Math.max(0, 100 - diffDias * 2);
+  return { score, label: score >= 60 ? "Prova próxima" : "Prova distante" };
+}
+
+function calcularPrioridadeTema(tema) {
+  const prova = state.config.provaPrincipal || "fmabc";
+  const incidenciaVal = getIncidenciaTema(tema, prova);
+  const desempenho = getDesempenhoRecenteTema(tema.id);
+  const deficiencia = desempenho != null ? 100 - desempenho : 50;
+  const revInfo = getRevisaoInfoTema(tema.id);
+  const provaInfo = getUrgenciaProva();
+  const scoreRaw = 0.4 * incidenciaVal + 0.3 * deficiencia + 0.2 * revInfo.score + 0.1 * provaInfo.score;
+  const score = Math.max(0, Math.min(100, Math.round(scoreRaw)));
+  const nivel = score >= 70 ? "Alta" : score >= 40 ? "Média" : "Baixa";
+  const nomeProva = prova === "fmabc" ? "FMABC" : prova === "susSp" ? "SUS-SP" : "Personalizada";
+  const incidenciaLabel = incidenciaVal >= 67 ? "alta" : incidenciaVal >= 34 ? "média" : "baixa";
+  return {
+    score,
+    nivel,
+    incidenciaVal,
+    incidenciaLabel,
+    nomeProva,
+    desempenho,
+    revisaoLabel: revInfo.label,
+    provaLabel: provaInfo.label,
+  };
+}
+
+/* ---------- Modal: detalhe da prioridade ---------- */
+const modalPrioridade = document.getElementById("modal-prioridade");
+
+function openPrioridadeModal(temaId) {
+  const tema = getTema(temaId);
+  if (!tema) return;
+  const prio = calcularPrioridadeTema(tema);
+  document.getElementById("prioridade-tema-nome").textContent = `${tema.nome} — Prioridade ${prio.score} (${prio.nivel})`;
+  document.getElementById("prioridade-fatores").innerHTML = `
+    <div class="prioridade-fator"><span>Incidência ${escapeHtml(prio.nomeProva)}</span><strong>${prio.incidenciaLabel} (${prio.incidenciaVal})</strong></div>
+    <div class="prioridade-fator"><span>Desempenho</span><strong>${prio.desempenho != null ? prio.desempenho + "%" : "Sem dados"}</strong></div>
+    <div class="prioridade-fator"><span>Revisão</span><strong>${escapeHtml(prio.revisaoLabel)}</strong></div>
+    <div class="prioridade-fator"><span>Prova</span><strong>${escapeHtml(prio.provaLabel)}</strong></div>
+  `;
+  modalPrioridade.classList.remove("hidden");
+}
+const btnClosePrioridade = document.getElementById("btn-close-prioridade");
+if (btnClosePrioridade) btnClosePrioridade.addEventListener("click", () => modalPrioridade.classList.add("hidden"));
+
+/* ============================================================
+   DASHBOARD (aba)
+   ============================================================ */
+const AREA_MAP = {
+  Cardiologia: "Clínica Médica",
+  "Terapia Intensiva": "Clínica Médica",
+  Hepatologia: "Clínica Médica",
+  Endocrinologia: "Clínica Médica",
+  Neurologia: "Clínica Médica",
+  Pneumologia: "Clínica Médica",
+  Nefrologia: "Clínica Médica",
+  Reumatologia: "Clínica Médica",
+  Hematologia: "Clínica Médica",
+  Infectologia: "Clínica Médica",
+  "Medicina Preventiva / Epidemiologia": "Preventiva",
+  "Toxicologia / Urgências": "Preventiva",
+  Psiquiatria: "Preventiva",
+  Cirurgia: "Cirurgia",
+  "Ginecologia e Obstetrícia": "GO",
+  Pediatria: "Pediatria",
+};
+const AREAS_DASHBOARD = ["Cirurgia", "Clínica Médica", "Pediatria", "GO", "Preventiva"];
+const AREA_CORES = {
+  Cirurgia: "#dc2626",
+  "Clínica Médica": "#2563eb",
+  Pediatria: "#0ea5e9",
+  GO: "#ec4899",
+  Preventiva: "#16a34a",
+};
+
+function getAreaDaEspecialidade(nomeEsp) {
+  return AREA_MAP[nomeEsp] || null;
+}
+
+function calcularDesempenhoPorArea() {
+  const acc = {};
+  AREAS_DASHBOARD.forEach((a) => (acc[a] = { somaPct: 0, countPct: 0, concluidos: 0, total: 0 }));
+  state.temas.forEach((t) => {
+    const esp = getEspecialidade(t.especialidadeId);
+    const area = esp ? getAreaDaEspecialidade(esp.nome) : null;
+    if (!area || !acc[area]) return;
+    acc[area].total++;
+    if (t.concluido) acc[area].concluidos++;
+  });
+  state.cronograma.atividades.forEach((a) => {
+    if (a.percentual == null) return;
+    const tema = getTema(a.temaId);
+    const esp = tema ? getEspecialidade(tema.especialidadeId) : null;
+    const area = esp ? getAreaDaEspecialidade(esp.nome) : null;
+    if (!area || !acc[area]) return;
+    acc[area].somaPct += a.percentual;
+    acc[area].countPct++;
+  });
+  return AREAS_DASHBOARD.map((area) => {
+    const r = acc[area];
+    const pct = r.countPct > 0 ? Math.round(r.somaPct / r.countPct) : r.total > 0 ? Math.round((r.concluidos / r.total) * 100) : 0;
+    return { area, pct, total: r.total, concluidos: r.concluidos };
+  });
+}
+
+function renderDashStatCards() {
+  const container = document.getElementById("dash-stat-cards");
+  if (!container) return;
+  const ativs = state.cronograma.atividades;
+  const hoje = todayStr();
+
+  const estudados = new Set(ativs.filter((a) => a.tipo === "estudo" && a.concluida).map((a) => a.temaId)).size;
+  const atrasados = ativs.filter((a) => !a.concluida && a.dataPlanejada < hoje).length;
+  const concluidos = state.temas.filter((t) => t.concluido).length;
+  const comAcertos = ativs.filter((a) => a.percentual != null);
+  const acertoMedio = comAcertos.length ? Math.round(comAcertos.reduce((s, a) => s + a.percentual, 0) / comAcertos.length) : 0;
+  const questoesRespondidas = comAcertos.length * QUESTOES_POR_TEMA;
+  const minutosConcluidos = ativs.filter((a) => a.concluida).reduce((s, a) => s + (a.duracaoMin || 0), 0);
+  const horas = (minutosConcluidos / 60).toFixed(1).replace(".0", "");
+
+  const cards = [
+    { valor: estudados, label: "Estudados", variante: "total" },
+    { valor: atrasados, label: "Atrasados", variante: "pending" },
+    { valor: concluidos, label: "Concluídos", variante: "done" },
+    { valor: acertoMedio + "%", label: "Acerto médio", variante: "done" },
+    { valor: questoesRespondidas, label: "Questões", variante: "scheduled" },
+    { valor: horas + "h", label: "Horas", variante: "total" },
+  ];
+  container.innerHTML = cards
+    .map(
+      (c) => `
+      <div class="card stat-card stat-card--${c.variante}">
+        <span class="stat-value">${c.valor}</span>
+        <span class="stat-label">${c.label}</span>
+      </div>`
+    )
+    .join("");
+}
+
+function renderDashAreaGrid() {
+  const container = document.getElementById("dash-area-grid");
+  if (!container) return;
+  const dados = calcularDesempenhoPorArea();
+  container.innerHTML = dados
+    .map(
+      (d) => `
+      <div class="dash-area-card">
+        <div class="dash-area-nome">${escapeHtml(d.area)}</div>
+        <div class="dash-area-pct">${d.pct}%</div>
+        <div class="dash-area-outer"><div class="dash-area-fill" style="width:${d.pct}%;background:${AREA_CORES[d.area] || "var(--accent)"}"></div></div>
+        <div class="dash-area-sub">${d.concluidos}/${d.total} temas concluídos</div>
+      </div>`
+    )
+    .join("");
+}
+
+function renderDashHeatmap() {
+  const container = document.getElementById("dash-heatmap");
+  if (!container) return;
+  const hoje = todayStr();
+  const dias = [];
+  for (let i = 97; i >= 0; i--) dias.push(addDaysStr(hoje, -i));
+
+  const contagem = {};
+  state.cronograma.atividades.forEach((a) => {
+    if (a.concluida && a.dataConclusao) contagem[a.dataConclusao] = (contagem[a.dataConclusao] || 0) + 1;
+  });
+  const max = Math.max(1, ...Object.values(contagem));
+
+  const cells = dias
+    .map((d) => {
+      const c = contagem[d] || 0;
+      const razao = c / max;
+      const nivel = c === 0 ? 0 : razao <= 0.25 ? 1 : razao <= 0.5 ? 2 : razao <= 0.75 ? 3 : 4;
+      return `<span class="dash-heat-cell dash-heat-${nivel}" title="${formatDateFull(d)}: ${c} atividade(s)"></span>`;
+    })
+    .join("");
+
+  container.innerHTML = `
+    <div class="dash-heat-grid">${cells}</div>
+    <div class="dash-heat-legend"><span>Menos</span>
+      <span class="dash-heat-cell dash-heat-0"></span><span class="dash-heat-cell dash-heat-1"></span>
+      <span class="dash-heat-cell dash-heat-2"></span><span class="dash-heat-cell dash-heat-3"></span>
+      <span class="dash-heat-cell dash-heat-4"></span><span>Mais</span>
+    </div>`;
+}
+
+ui.dashCalendarioOffset = 0;
+
+function renderDashCalendario() {
+  const container = document.getElementById("dash-calendario");
+  if (!container) return;
+  const hoje = todayStr();
+  const base = parseLocalDate(hoje);
+  base.setDate(1);
+  base.setMonth(base.getMonth() + ui.dashCalendarioOffset);
+  const ano = base.getFullYear();
+  const mes = base.getMonth();
+  const primeiroDiaSemana = new Date(ano, mes, 1).getDay();
+  const diasNoMes = new Date(ano, mes + 1, 0).getDate();
+  const nomeMes = base.toLocaleDateString("pt-BR", { month: "long", year: "numeric" });
+
+  const porDia = {};
+  state.cronograma.atividades.forEach((a) => {
+    (porDia[a.dataPlanejada] = porDia[a.dataPlanejada] || []).push(a);
+  });
+
+  let html = `
+    <div class="dash-cal-header">
+      <button type="button" class="dash-cal-nav" data-cal-nav="-1">‹</button>
+      <span>${escapeHtml(nomeMes)}</span>
+      <button type="button" class="dash-cal-nav" data-cal-nav="1">›</button>
+    </div>
+    <div class="dash-cal-grid">`;
+  ["D", "S", "T", "Q", "Q", "S", "S"].forEach((d) => (html += `<div class="dash-cal-dow">${d}</div>`));
+  for (let i = 0; i < primeiroDiaSemana; i++) html += `<div class="dash-cal-cell dash-cal-empty"></div>`;
+  for (let d = 1; d <= diasNoMes; d++) {
+    const dataStr = `${ano}-${pad(mes + 1)}-${pad(d)}`;
+    const ativsDia = (porDia[dataStr] || []).sort(ativPrioridadeSort);
+    const isHoje = dataStr === hoje;
+    const visiveis = ativsDia.slice(0, 4);
+    const chips = visiveis
+      .map((a) => {
+        const atrasada = !a.concluida && a.dataPlanejada < hoje;
+        const ehEstudo = a.tipo === "estudo" || a.tipo === "questoes";
+        const cls = a.concluida ? "concluido" : atrasada ? "atrasado" : ehEstudo ? "estudo" : "revisao";
+        const tema = getTema(a.temaId);
+        return `<button type="button" class="dash-cal-chip dash-cal-chip--${cls}" data-action="abrir-tema-cal" data-tema-id="${a.temaId}" title="${escapeHtml(tema ? tema.nome : "")}"></button>`;
+      })
+      .join("");
+    const extra = ativsDia.length > 4 ? `<span class="dash-cal-more">+${ativsDia.length - 4}</span>` : "";
+    html += `<div class="dash-cal-cell ${isHoje ? "dash-cal-hoje" : ""}"><span class="dash-cal-daynum">${d}</span><div class="dash-cal-chips">${chips}${extra}</div></div>`;
+  }
+  html += `</div>`;
+  container.innerHTML = html;
+}
+
+const dashCalendarioEl = document.getElementById("dash-calendario");
+if (dashCalendarioEl) {
+  dashCalendarioEl.addEventListener("click", (e) => {
+    const navBtn = e.target.closest("[data-cal-nav]");
+    if (navBtn) {
+      ui.dashCalendarioOffset += parseInt(navBtn.dataset.calNav, 10);
+      renderDashCalendario();
+      return;
+    }
+    const chip = e.target.closest("[data-action='abrir-tema-cal']");
+    if (chip) openEditTema(chip.dataset.temaId);
+  });
+}
+
+function renderDashPainel() {
+  const container = document.getElementById("dash-painel");
+  if (!container) return;
+  const hoje = todayStr();
+  const naoConcluidas = state.cronograma.atividades.filter((a) => !a.concluida);
+
+  const doHoje = naoConcluidas.filter((a) => a.dataPlanejada === hoje).sort(ativPrioridadeSort);
+  const atrasadas = naoConcluidas.filter((a) => a.dataPlanejada < hoje).sort((a, b) => a.dataPlanejada.localeCompare(b.dataPlanejada));
+  const proximas = naoConcluidas
+    .filter((a) => a.dataPlanejada > hoje)
+    .sort((a, b) => a.dataPlanejada.localeCompare(b.dataPlanejada))
+    .slice(0, 8);
+
+  const renderCol = (titulo, lista) => {
+    if (!lista.length) return `<div class="dash-panel-col"><div class="dash-panel-col-title">${titulo}</div><p class="empty-msg">Nada aqui.</p></div>`;
+    const itens = lista
+      .slice(0, 8)
+      .map((a) => {
+        const tema = getTema(a.temaId);
+        if (!tema) return "";
+        const info = TIPO_ATIVIDADE_INFO[a.tipo] || { label: a.tipo };
+        return `<div class="dash-panel-item" data-action="abrir-tema-painel" data-tema-id="${tema.id}">
+          <span class="dash-panel-item-nome">${escapeHtml(tema.nome)}</span>
+          <span class="dash-panel-item-meta">${escapeHtml(info.label)}</span>
+        </div>`;
+      })
+      .join("");
+    return `<div class="dash-panel-col"><div class="dash-panel-col-title">${titulo} (${lista.length})</div>${itens}</div>`;
+  };
+
+  container.innerHTML =
+    renderCol("Hoje", doHoje) + renderCol("Atrasadas", atrasadas) + renderCol("Próximas", proximas);
+}
+
+const dashPainelEl = document.getElementById("dash-painel");
+if (dashPainelEl) {
+  dashPainelEl.addEventListener("click", (e) => {
+    const item = e.target.closest("[data-action='abrir-tema-painel']");
+    if (item) openEditTema(item.dataset.temaId);
+  });
+}
+
+function renderDashboardTab() {
+  const viewDashboard = document.getElementById("view-dashboard");
+  if (!viewDashboard || viewDashboard.classList.contains("hidden")) return;
+  renderDashStatCards();
+  renderDashAreaGrid();
+  renderDashHeatmap();
+  renderDashCalendario();
+  renderDashPainel();
 }
 
 /* ============================================================

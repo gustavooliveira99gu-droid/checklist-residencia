@@ -36,6 +36,7 @@
 <nav class="main-tabs">
   <button class="main-tab active" data-view="checklist">📋 Checklist</button>
   <button class="main-tab" data-view="cronograma">🗓 Cronograma</button>
+  <button class="main-tab" data-view="dashboard">📊 Dashboard</button>
 </nav>
 
 <main class="container">
@@ -146,6 +147,34 @@
   <div id="cronograma-content"></div>
 </div>
 
+<div id="view-dashboard" class="hidden">
+  <section class="cronograma-header">
+    <h2 class="section-title">Dashboard</h2>
+    <p class="cronograma-sub">Visão geral do seu desempenho real de estudos</p>
+  </section>
+
+  <div id="dash-stat-cards" class="stat-cards dash-stat-cards"></div>
+
+  <section class="dash-section">
+    <h3 class="dash-section-title">Desempenho por área</h3>
+    <div id="dash-area-grid" class="dash-area-grid"></div>
+  </section>
+
+  <section class="dash-section">
+    <h3 class="dash-section-title">Atividade recente</h3>
+    <div id="dash-heatmap" class="dash-heatmap-wrap"></div>
+  </section>
+
+  <section class="dash-section">
+    <div id="dash-calendario"></div>
+  </section>
+
+  <section class="dash-section">
+    <h3 class="dash-section-title">Painel</h3>
+    <div id="dash-painel" class="dash-panel-grid"></div>
+  </section>
+</div>
+
 </main>
 
 <footer class="app-footer">
@@ -172,6 +201,18 @@
 
       <label class="field-label">Data de estudo (opcional)</label>
       <input type="date" id="tema-data" class="field-input">
+
+      <label class="field-label">Incidência por prova (0–100, opcional)</label>
+      <div class="field-row-2">
+        <div>
+          <span class="field-sublabel">FMABC</span>
+          <input type="number" id="tema-incidencia-fmabc" class="field-input" min="0" max="100" placeholder="0">
+        </div>
+        <div>
+          <span class="field-sublabel">SUS-SP</span>
+          <input type="number" id="tema-incidencia-sussp" class="field-input" min="0" max="100" placeholder="0">
+        </div>
+      </div>
 
       <div class="modal-actions">
         <button type="button" class="btn btn-ghost" id="btn-cancel-tema">Cancelar</button>
@@ -250,10 +291,34 @@
   </div>
 </div>
 
+<!-- MODAL: Detalhe da Prioridade -->
+<div id="modal-prioridade" class="modal-overlay hidden">
+  <div class="modal modal-small">
+    <h3>Prioridade inteligente</h3>
+    <p class="modal-tema-nome" id="prioridade-tema-nome"></p>
+    <div id="prioridade-fatores" class="prioridade-fatores"></div>
+    <div class="modal-actions">
+      <button type="button" class="btn btn-primary" id="btn-close-prioridade">Fechar</button>
+    </div>
+  </div>
+</div>
+
 <!-- MODAL: Configurações -->
 <div id="modal-settings" class="modal-overlay hidden">
   <div class="modal">
     <h3>Configurações</h3>
+
+    <div class="settings-block">
+      <h4>Prova principal</h4>
+      <label class="field-label">Prova</label>
+      <select id="config-prova-principal" class="field-input">
+        <option value="fmabc">FMABC</option>
+        <option value="susSp">SUS-SP</option>
+        <option value="personalizada">Personalizada</option>
+      </select>
+      <label class="field-label">Data da prova (opcional)</label>
+      <input type="date" id="config-data-prova" class="field-input">
+    </div>
 
     <div class="settings-block">
       <h4>Backup</h4>
