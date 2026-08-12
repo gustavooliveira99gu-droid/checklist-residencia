@@ -153,6 +153,54 @@
     <p class="cronograma-sub">Visão geral do seu desempenho real de estudos</p>
   </section>
 
+  <section class="dash-section dash-prova-section">
+    <label class="field-label" for="dash-prova-select">Prova-alvo</label>
+    <select id="dash-prova-select" class="field-input dash-prova-select">
+      <option value="fmabc">FMABC</option>
+      <option value="susSp">SUS-SP</option>
+      <option value="ambas">Ambas</option>
+      <option value="personalizada">Personalizada</option>
+    </select>
+  </section>
+
+  <section class="dash-section">
+    <h3 class="dash-section-title">🎯 Temas prioritários</h3>
+    <div class="dash-prio-filtros">
+      <select id="dash-prio-especialidade" class="field-input"></select>
+      <select id="dash-prio-incidencia" class="field-input">
+        <option value="todas">Incidência: todas</option>
+        <option value="muito-alta">🔥 Muito alta</option>
+        <option value="alta">Alta</option>
+        <option value="media">Média</option>
+        <option value="baixa">Baixa</option>
+        <option value="muito-baixa">Muito baixa</option>
+      </select>
+      <select id="dash-prio-status" class="field-input">
+        <option value="pendentes">Pendentes</option>
+        <option value="todos">Todos</option>
+        <option value="concluidos">Concluídos</option>
+      </select>
+      <select id="dash-prio-revisao" class="field-input">
+        <option value="todas">Revisão: todas</option>
+        <option value="pendente">Com revisão pendente</option>
+        <option value="atrasada">Revisão atrasada</option>
+      </select>
+      <select id="dash-prio-desempenho" class="field-input">
+        <option value="todos">Desempenho: todos</option>
+        <option value="baixo">Abaixo de 60%</option>
+        <option value="sem-dados">Sem dados</option>
+      </select>
+      <select id="dash-prio-ordenar" class="field-input">
+        <option value="prioridade">Ordenar: Prioridade recomendada</option>
+        <option value="incidencia">Maior incidência</option>
+        <option value="desempenho">Menor desempenho</option>
+        <option value="atraso">Revisões atrasadas</option>
+        <option value="cronologica">Ordem cronológica</option>
+      </select>
+    </div>
+    <div id="dash-top-prioritarios" class="dash-prio-list"></div>
+  </section>
+
   <div id="dash-stat-cards" class="stat-cards dash-stat-cards"></div>
 
   <section class="dash-section">
@@ -314,6 +362,7 @@
       <select id="config-prova-principal" class="field-input">
         <option value="fmabc">FMABC</option>
         <option value="susSp">SUS-SP</option>
+        <option value="ambas">Ambas</option>
         <option value="personalizada">Personalizada</option>
       </select>
       <label class="field-label">Data da prova (opcional)</label>

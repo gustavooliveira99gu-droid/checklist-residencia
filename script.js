@@ -65,7 +65,8 @@ function normalizeConfig(parsed) {
   if (!parsed.config) {
     parsed.config = { googleConnected: false, selectedCalendarId: null, selectedCalendarName: null };
   }
-  if (parsed.config.provaPrincipal !== "fmabc" && parsed.config.provaPrincipal !== "susSp" && parsed.config.provaPrincipal !== "personalizada") {
+  const provasValidas = ["fmabc", "susSp", "ambas", "personalizada"];
+  if (provasValidas.indexOf(parsed.config.provaPrincipal) === -1) {
     parsed.config.provaPrincipal = "fmabc";
   }
   if (parsed.config.dataProva === undefined) parsed.config.dataProva = null;
@@ -321,6 +322,122 @@ function addMissingTemas() {
   if (mudou) saveState();
 }
 
+/* ---------- INCIDÊNCIA INICIAL (SUS-SP / FMABC) ----------
+   Scores de importância histórica por prova, fornecidos para os temas já
+   cadastrados no app. Formato por especialidade: [nomeTema, susSp, fmabc].
+   Aplicado apenas quando o tema ainda não tem incidência definida (0/0),
+   nunca sobrescreve valores já editados pelo usuário. ------- */
+function getIncidenciaSeedPorEspecialidade() {
+  return {
+    "Cirurgia": [
+      ["Trauma — avaliação inicial e trauma de tórax", 100, 95],
+      ["Trauma — transição toracoabdominal, abdome, pelve e TCE", 100, 95],
+      ["Queimadura", 80, 80],
+      ["Risco cirúrgico", 70, 70],
+      ["Complicações cirúrgicas", 75, 80],
+      ["Cicatrização", 65, 75],
+      ["Delgado e cólon — pólipos e câncer colorretal", 75, 75],
+      ["Abdome agudo", 100, 100],
+      ["Pâncreas", 75, 75],
+      ["Fígado e vias biliares", 85, 80],
+      ["Hérnias", 75, 70],
+      ["Proctologia", 90, 65],
+      ["Cirurgia bariátrica", 55, 70],
+    ],
+    "Cardiologia": [
+      ["Insuficiência cardíaca", 95, 90],
+      ["Doença coronariana", 90, 85],
+      ["Arritmias cardíacas", 85, 90],
+      ["PCR", 80, 90],
+      ["Hipertensão arterial", 75, 75],
+    ],
+    "Terapia Intensiva": [["Instabilidade hemodinâmica (choque)", 85, 80]],
+    "Hepatologia": [
+      ["Hepatopatias crônicas e cirrose", 70, 95],
+      ["Síndrome de hipertensão porta", 70, 85],
+    ],
+    "Infectologia": [
+      ["Pneumonia", 85, 80],
+      ["HIV/AIDS", 75, 70],
+      ["Meningites", 75, 70],
+    ],
+    "Pneumologia": [
+      ["Tuberculose", 85, 75],
+      ["Asma", 75, 70],
+      ["DPOC", 75, 70],
+      ["Tromboembolia pulmonar", 75, 70],
+      ["Insuficiência respiratória aguda", 80, 75],
+    ],
+    "Neurologia": [["Acidente vascular encefálico", 80, 75]],
+    "Endocrinologia": [["Diabetes mellitus", 75, 70]],
+    "Nefrologia": [
+      ["Equilíbrio eletrolítico", 80, 75],
+      ["Equilíbrio ácido-básico", 80, 75],
+    ],
+    "Hematologia": [["Série vermelha — anemias", 70, 65]],
+    "Medicina Preventiva / Epidemiologia": [
+      ["Atenção básica", 100, 90],
+      ["Evolução e legislação do SUS", 95, 95],
+      ["Financiamento do SUS", 85, 80],
+      ["Classificação dos estudos epidemiológicos", 95, 100],
+      ["Análise I — medidas de frequência e associação", 95, 100],
+      ["Extras e validação de teste diagnóstico", 90, 95],
+      ["Coeficientes (taxas)", 85, 90],
+      ["Raiva, tétano e vigilância da saúde", 90, 85],
+      ["Processo epidêmico / prevenção de doenças", 90, 85],
+      ["Ética médica", 80, 75],
+      ["Índices — transição demográfica e epidemiológica", 80, 80],
+      ["Doenças crônicas não transmissíveis — declaração de óbito", 75, 75],
+    ],
+    "Ginecologia e Obstetrícia": [
+      ["Parto e prematuridade", 85, 78],
+      ["Pré-natal, estática fetal e indução de parto", 88, 83],
+      ["Doenças clínicas na gestação", 85, 95],
+      ["Hemorragias na primeira metade", 85, 95],
+      ["Hemorragias na segunda metade e doença hemolítica perinatal", 85, 85],
+      ["Fórcipe, endometrite e hemorragia puerperal", 85, 85],
+      ["Endocrinoginecologia e infertilidade", 90, 80],
+      ["Sangramento uterino anormal e endometriose", 83, 85],
+      ["Anticoncepção", 85, 85],
+      ["IST", 75, 95],
+      ["Sofrimento fetal", 80, 80],
+    ],
+    "Pediatria": [
+      ["Imunizações", 90, 100],
+      ["IRA: infecções das vias aéreas inferiores", 90, 95],
+      ["Neonatologia: infecções congênitas e distúrbios respiratórios", 78, 90],
+      ["Neonatologia: icterícia neonatal e reanimação neonatal", 80, 90],
+      ["Aleitamento materno e suplementação de micronutrientes", 85, 80],
+      ["Doenças gastrointestinais", 85, 80],
+      ["IRA: infecções das vias aéreas superiores", 80, 85],
+      ["IRA: doenças com estridor", 75, 80],
+      ["Infecção do trato urinário", 75, 75],
+      ["Doenças exantemáticas", 75, 75],
+      ["Crescimento e seus distúrbios", 70, 75],
+    ],
+  };
+}
+
+function seedIncidenciaIniciais() {
+  const seed = getIncidenciaSeedPorEspecialidade();
+  let mudou = false;
+  Object.keys(seed).forEach((nomeEsp) => {
+    const esp = state.especialidades.find((e) => e.nome.trim().toLowerCase() === nomeEsp.trim().toLowerCase());
+    if (!esp) return;
+    seed[nomeEsp].forEach(([nomeTema, susSp, fmabc]) => {
+      const tema = state.temas.find(
+        (t) => t.especialidadeId === esp.id && t.nome.trim().toLowerCase() === nomeTema.trim().toLowerCase()
+      );
+      if (!tema) return;
+      const semDados = !tema.incidencia || ((tema.incidencia.fmabc || 0) === 0 && (tema.incidencia.susSp || 0) === 0);
+      if (!semDados) return;
+      tema.incidencia = { fmabc, susSp };
+      mudou = true;
+    });
+  });
+  if (mudou) saveState();
+}
+
 /* ---------- STATE ---------- */
 let state = loadState();
 
@@ -362,6 +479,14 @@ const ui = {
   especialidadeFilter: "todas",
   expandedQuestoes: new Set(), // temaIds com o painel de questões aberto
   cronogramaTab: "hoje", // hoje | semana | proximas | atrasadas | progresso
+  dashPrio: {
+    especialidade: "todas",
+    incidencia: "todas",
+    status: "pendentes",
+    revisao: "todas",
+    desempenho: "todos",
+    ordenar: "prioridade",
+  },
 };
 
 /* ---------- HELPERS ---------- */
@@ -542,6 +667,12 @@ function renderChecklist() {
           metaParts.push(
             `<span class="badge-questoes ${isQuestoesComplete ? "completo" : ""}" id="questoes-badge-${t.id}">📝 Questões: ${doneQ}/${QUESTOES_POR_TEMA}${isQuestoesComplete ? " ✓" : ""}</span>`
           );
+          const incInfo = getIncidenciaInfo(t);
+          if (incInfo.temDados) {
+            metaParts.push(
+              `<span class="badge-incidencia ${incInfo.classe.cls}" title="SUS-SP: ${incInfo.susSp} | FMABC: ${incInfo.fmabc}">${incInfo.classe.emoji ? incInfo.classe.emoji + " " : ""}Incidência: ${incInfo.classe.label}${incInfo.destaqueAmbas ? " ⭐" : ""}</span>`
+            );
+          }
           if (!t.concluido) {
             const prio = calcularPrioridadeTema(t);
             metaParts.push(
@@ -1005,14 +1136,27 @@ document.getElementById("btn-settings").addEventListener("click", () => {
 });
 document.getElementById("btn-close-settings").addEventListener("click", () => modalSettings.classList.add("hidden"));
 
+/* Fonte única de troca de prova-alvo: usada em Configurações e no Dashboard,
+   mantém os dois seletores sincronizados e recalcula tudo imediatamente. */
+function setProvaPrincipal(valor) {
+  state.config.provaPrincipal = valor;
+  saveState();
+  const c1 = document.getElementById("config-prova-principal");
+  const c2 = document.getElementById("dash-prova-select");
+  if (c1) c1.value = valor;
+  if (c2) c2.value = valor;
+  renderAll();
+  showToast("Prova principal atualizada. Prioridades recalculadas.");
+}
+
 const configProvaPrincipal = document.getElementById("config-prova-principal");
 if (configProvaPrincipal) {
-  configProvaPrincipal.addEventListener("change", (e) => {
-    state.config.provaPrincipal = e.target.value;
-    saveState();
-    renderAll();
-    showToast("Prova principal atualizada. Prioridades recalculadas.");
-  });
+  configProvaPrincipal.addEventListener("change", (e) => setProvaPrincipal(e.target.value));
+}
+
+const dashProvaSelect = document.getElementById("dash-prova-select");
+if (dashProvaSelect) {
+  dashProvaSelect.addEventListener("change", (e) => setProvaPrincipal(e.target.value));
 }
 
 const configDataProva = document.getElementById("config-data-prova");
@@ -1231,7 +1375,10 @@ function gerarRevisoes(atividadeEstudo) {
 /* ---------- Bootstrap: garante que todo tema (existente ou novo) tenha atividades ---------- */
 function bootstrapCronograma() {
   let mudou = false;
-  state.temas.forEach((tema) => {
+  const temasOrdenados = state.temas
+    .slice()
+    .sort((a, b) => (a.concluido || b.concluido ? 0 : calcularPrioridadeTema(b).score - calcularPrioridadeTema(a).score));
+  temasOrdenados.forEach((tema) => {
     const temAtividades = state.cronograma.atividades.some((a) => a.temaId === tema.id);
     if (temAtividades) return;
     mudou = true;
@@ -1797,10 +1944,31 @@ function diasEntre(dataInicioStr, dataFimStr) {
 
 function getIncidenciaTema(tema, prova) {
   if (!tema.incidencia) return 0;
-  if (prova === "personalizada") {
+  if (prova === "personalizada" || prova === "ambas") {
     return Math.round(((tema.incidencia.fmabc || 0) + (tema.incidencia.susSp || 0)) / 2);
   }
   return tema.incidencia[prova] || 0;
+}
+
+/* Classificação visual da incidência (independente dos 3 níveis de prioridade). */
+function classificarIncidencia(score) {
+  if (score >= 85) return { label: "Muito alta", emoji: "🔥", cls: "muito-alta" };
+  if (score >= 70) return { label: "Alta", emoji: "", cls: "alta" };
+  if (score >= 50) return { label: "Média", emoji: "", cls: "media" };
+  if (score >= 30) return { label: "Baixa", emoji: "", cls: "baixa" };
+  return { label: "Muito baixa", emoji: "", cls: "muito-baixa" };
+}
+
+/* Info completa de incidência para um tema na prova ativa, incluindo destaque
+   quando "Ambas" e o tema tem alta incidência simultânea nas duas provas. */
+function getIncidenciaInfo(tema) {
+  const prova = state.config.provaPrincipal || "fmabc";
+  const fmabc = (tema.incidencia && tema.incidencia.fmabc) || 0;
+  const susSp = (tema.incidencia && tema.incidencia.susSp) || 0;
+  const temDados = fmabc > 0 || susSp > 0;
+  const valor = getIncidenciaTema(tema, prova);
+  const destaqueAmbas = prova === "ambas" && fmabc >= 70 && susSp >= 70;
+  return { valor, fmabc, susSp, temDados, destaqueAmbas, prova, classe: classificarIncidencia(valor) };
 }
 
 function getDesempenhoRecenteTema(temaId) {
@@ -1833,25 +2001,37 @@ function getUrgenciaProva() {
 
 function calcularPrioridadeTema(tema) {
   const prova = state.config.provaPrincipal || "fmabc";
-  const incidenciaVal = getIncidenciaTema(tema, prova);
+  const incInfo = getIncidenciaInfo(tema);
   const desempenho = getDesempenhoRecenteTema(tema.id);
   const deficiencia = desempenho != null ? 100 - desempenho : 50;
   const revInfo = getRevisaoInfoTema(tema.id);
   const provaInfo = getUrgenciaProva();
-  const scoreRaw = 0.4 * incidenciaVal + 0.3 * deficiencia + 0.2 * revInfo.score + 0.1 * provaInfo.score;
+  let scoreRaw = 0.4 * incInfo.valor + 0.3 * deficiencia + 0.2 * revInfo.score + 0.1 * provaInfo.score;
+  if (incInfo.destaqueAmbas) scoreRaw += 5;
   const score = Math.max(0, Math.min(100, Math.round(scoreRaw)));
   const nivel = score >= 70 ? "Alta" : score >= 40 ? "Média" : "Baixa";
-  const nomeProva = prova === "fmabc" ? "FMABC" : prova === "susSp" ? "SUS-SP" : "Personalizada";
-  const incidenciaLabel = incidenciaVal >= 67 ? "alta" : incidenciaVal >= 34 ? "média" : "baixa";
+  const nomeProva = prova === "fmabc" ? "FMABC" : prova === "susSp" ? "SUS-SP" : prova === "ambas" ? "Ambas" : "Personalizada";
+
+  const motivoPartes = [];
+  if (incInfo.temDados) motivoPartes.push(`${incInfo.classe.emoji ? incInfo.classe.emoji + " " : ""}incidência ${incInfo.classe.label.toLowerCase()}`);
+  if (desempenho != null) motivoPartes.push(`desempenho ${desempenho}%`);
+  if (revInfo.score > 0) motivoPartes.push(revInfo.label.toLowerCase());
+  const motivo = motivoPartes.join(" · ") || "sem histórico ainda";
+
   return {
     score,
     nivel,
-    incidenciaVal,
-    incidenciaLabel,
+    incidenciaVal: incInfo.valor,
+    incidenciaClasse: incInfo.classe,
+    incidenciaFmabc: incInfo.fmabc,
+    incidenciaSusSp: incInfo.susSp,
+    incidenciaTemDados: incInfo.temDados,
+    destaqueAmbas: incInfo.destaqueAmbas,
     nomeProva,
     desempenho,
     revisaoLabel: revInfo.label,
     provaLabel: provaInfo.label,
+    motivo,
   };
 }
 
@@ -1864,7 +2044,9 @@ function openPrioridadeModal(temaId) {
   const prio = calcularPrioridadeTema(tema);
   document.getElementById("prioridade-tema-nome").textContent = `${tema.nome} — Prioridade ${prio.score} (${prio.nivel})`;
   document.getElementById("prioridade-fatores").innerHTML = `
-    <div class="prioridade-fator"><span>Incidência ${escapeHtml(prio.nomeProva)}</span><strong>${prio.incidenciaLabel} (${prio.incidenciaVal})</strong></div>
+    <div class="prioridade-fator"><span>Incidência (${escapeHtml(prio.nomeProva)})</span><strong>${prio.incidenciaClasse.emoji} ${prio.incidenciaClasse.label}</strong></div>
+    ${prio.incidenciaTemDados ? `<div class="prioridade-fator prioridade-fator-sub"><span>SUS-SP ${prio.incidenciaSusSp} · FMABC ${prio.incidenciaFmabc}</span></div>` : ""}
+    ${prio.destaqueAmbas ? `<div class="prioridade-fator prioridade-fator-sub"><span>⭐ Alta incidência nas duas provas</span></div>` : ""}
     <div class="prioridade-fator"><span>Desempenho</span><strong>${prio.desempenho != null ? prio.desempenho + "%" : "Sem dados"}</strong></div>
     <div class="prioridade-fator"><span>Revisão</span><strong>${escapeHtml(prio.revisaoLabel)}</strong></div>
     <div class="prioridade-fator"><span>Prova</span><strong>${escapeHtml(prio.provaLabel)}</strong></div>
@@ -1933,6 +2115,104 @@ function calcularDesempenhoPorArea() {
     return { area, pct, total: r.total, concluidos: r.concluidos };
   });
 }
+
+/* ---------- Temas prioritários (top 5, com filtros e ordenação) ---------- */
+function renderDashPrioEspecialidadeOptions() {
+  const select = document.getElementById("dash-prio-especialidade");
+  if (!select) return;
+  const current = select.value || ui.dashPrio.especialidade;
+  const options = ['<option value="todas">Todas as especialidades</option>'];
+  state.especialidades.forEach((e) => options.push(`<option value="${e.id}">${escapeHtml(e.nome)}</option>`));
+  select.innerHTML = options.join("");
+  select.value = state.especialidades.some((e) => e.id === current) ? current : "todas";
+  ui.dashPrio.especialidade = select.value;
+}
+
+function passaFiltroDashPrio(tema, prio) {
+  const f = ui.dashPrio;
+  if (f.especialidade !== "todas" && tema.especialidadeId !== f.especialidade) return false;
+  if (f.status === "pendentes" && tema.concluido) return false;
+  if (f.status === "concluidos" && !tema.concluido) return false;
+  if (f.incidencia !== "todas" && prio.incidenciaClasse.cls !== f.incidencia) return false;
+  if (f.revisao === "pendente" && prio.revisaoLabel === "Nenhuma revisão pendente") return false;
+  if (f.revisao === "atrasada" && prio.revisaoLabel.indexOf("atrasada") === -1) return false;
+  if (f.desempenho === "baixo" && (prio.desempenho == null || prio.desempenho >= 60)) return false;
+  if (f.desempenho === "sem-dados" && prio.desempenho != null) return false;
+  return true;
+}
+
+function ordenarDashPrio(lista) {
+  const modo = ui.dashPrio.ordenar;
+  if (modo === "incidencia") return lista.sort((a, b) => b.prio.incidenciaVal - a.prio.incidenciaVal);
+  if (modo === "desempenho") {
+    return lista.sort((a, b) => (a.prio.desempenho == null ? -1 : a.prio.desempenho) - (b.prio.desempenho == null ? -1 : b.prio.desempenho));
+  }
+  if (modo === "atraso") {
+    return lista.sort((a, b) => {
+      const aAtr = a.prio.revisaoLabel.indexOf("atrasada") !== -1 ? 1 : 0;
+      const bAtr = b.prio.revisaoLabel.indexOf("atrasada") !== -1 ? 1 : 0;
+      return bAtr - aAtr || b.prio.score - a.prio.score;
+    });
+  }
+  if (modo === "cronologica") {
+    return lista.sort((a, b) => (a.tema.dataEstudo || "9999") .localeCompare(b.tema.dataEstudo || "9999"));
+  }
+  return lista.sort((a, b) => b.prio.score - a.prio.score);
+}
+
+function renderDashTopPrioritarios() {
+  const container = document.getElementById("dash-top-prioritarios");
+  if (!container) return;
+  renderDashPrioEspecialidadeOptions();
+
+  const candidatos = state.temas
+    .map((tema) => ({ tema, prio: calcularPrioridadeTema(tema) }))
+    .filter(({ tema, prio }) => passaFiltroDashPrio(tema, prio));
+
+  const ordenados = ordenarDashPrio(candidatos).slice(0, 5);
+
+  if (!ordenados.length) {
+    container.innerHTML = '<p class="empty-msg">Nenhum tema encontrado com esses filtros.</p>';
+    return;
+  }
+
+  container.innerHTML = ordenados
+    .map(({ tema, prio }, i) => {
+      const esp = getEspecialidade(tema.especialidadeId);
+      return `
+        <div class="dash-prio-item ${prio.destaqueAmbas ? "destaque" : ""}" data-action="ver-prioridade-dash" data-tema-id="${tema.id}">
+          <span class="dash-prio-rank">${i + 1}</span>
+          <div class="dash-prio-body">
+            <div class="dash-prio-top">
+              <span class="dash-prio-nome">${escapeHtml(tema.nome)}</span>
+              <span class="dash-prio-score">${prio.score}</span>
+            </div>
+            <div class="dash-prio-motivo">${esp ? escapeHtml(esp.nome) + " · " : ""}${escapeHtml(prio.motivo)}</div>
+          </div>
+        </div>`;
+    })
+    .join("");
+}
+
+const dashPrioListEl = document.getElementById("dash-top-prioritarios");
+if (dashPrioListEl) {
+  dashPrioListEl.addEventListener("click", (e) => {
+    const item = e.target.closest("[data-action='ver-prioridade-dash']");
+    if (item) openPrioridadeModal(item.dataset.temaId);
+  });
+}
+
+["dash-prio-especialidade", "dash-prio-incidencia", "dash-prio-status", "dash-prio-revisao", "dash-prio-desempenho", "dash-prio-ordenar"].forEach(
+  (id) => {
+    const el = document.getElementById(id);
+    if (!el) return;
+    el.addEventListener("change", (e) => {
+      const chave = id.replace("dash-prio-", "");
+      ui.dashPrio[chave] = e.target.value;
+      renderDashTopPrioritarios();
+    });
+  }
+);
 
 function renderDashStatCards() {
   const container = document.getElementById("dash-stat-cards");
@@ -2125,6 +2405,9 @@ if (dashPainelEl) {
 function renderDashboardTab() {
   const viewDashboard = document.getElementById("view-dashboard");
   if (!viewDashboard || viewDashboard.classList.contains("hidden")) return;
+  const provaSelect = document.getElementById("dash-prova-select");
+  if (provaSelect) provaSelect.value = state.config.provaPrincipal || "fmabc";
+  renderDashTopPrioritarios();
   renderDashStatCards();
   renderDashAreaGrid();
   renderDashHeatmap();
@@ -2145,6 +2428,7 @@ document.querySelectorAll(".modal-overlay").forEach((overlay) => {
    INIT
    ============================================================ */
 addMissingTemas();
+seedIncidenciaIniciais();
 bootstrapCronograma();
 renderAll();
 initGoogleClient();

@@ -764,6 +764,29 @@ button { font-family: inherit; cursor: pointer; }
   font-size: 13px;
 }
 .prioridade-fator strong { color: var(--text); }
+.prioridade-fator-sub {
+  padding: 0 12px;
+  font-size: 12px;
+  color: var(--text-muted);
+  background: none;
+  margin-top: -4px;
+}
+
+/* INCIDÊNCIA */
+.badge-incidencia {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 2px 8px;
+  border-radius: 999px;
+  font-weight: 600;
+  font-size: 12px;
+}
+.badge-incidencia.muito-alta { background: var(--danger-bg); color: var(--danger); }
+.badge-incidencia.alta { background: var(--warning-bg); color: var(--warning); }
+.badge-incidencia.media { background: var(--accent-bg); color: var(--accent); }
+.badge-incidencia.baixa { background: var(--track-bg); color: var(--text-muted); }
+.badge-incidencia.muito-baixa { background: var(--track-bg); color: var(--text-faint); }
 
 /* DASHBOARD (aba) */
 .dash-stat-cards { grid-template-columns: repeat(6, 1fr); margin-bottom: 28px; }
@@ -853,6 +876,50 @@ button { font-family: inherit; cursor: pointer; }
 .dash-cal-chip--atrasado { background: var(--danger); }
 .dash-cal-chip--concluido { background: var(--success); }
 .dash-cal-more { font-size: 9.5px; color: var(--text-faint); font-weight: 700; }
+
+.dash-prova-section { display: flex; align-items: center; gap: 12px; margin-bottom: 20px; }
+.dash-prova-section .field-label { margin: 0; }
+.dash-prova-select { max-width: 220px; }
+
+.dash-prio-filtros {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-bottom: 14px;
+}
+.dash-prio-filtros .field-input { width: auto; min-width: 150px; padding: 6px 10px; font-size: 12.5px; }
+
+.dash-prio-list { display: flex; flex-direction: column; gap: 8px; }
+.dash-prio-item {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  box-shadow: var(--shadow);
+  padding: 12px 14px;
+  cursor: pointer;
+}
+.dash-prio-item.destaque { border-color: var(--warning); }
+.dash-prio-rank {
+  flex: none;
+  width: 26px;
+  height: 26px;
+  border-radius: 50%;
+  background: var(--accent-bg);
+  color: var(--accent);
+  font-weight: 700;
+  font-size: 13px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+.dash-prio-body { flex: 1; min-width: 0; }
+.dash-prio-top { display: flex; justify-content: space-between; align-items: baseline; gap: 10px; }
+.dash-prio-nome { font-weight: 600; color: var(--text); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.dash-prio-score { font-weight: 700; color: var(--accent); flex: none; }
+.dash-prio-motivo { font-size: 12px; color: var(--text-muted); margin-top: 2px; }
 
 .dash-panel-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 16px; }
 .dash-panel-col {
@@ -974,6 +1041,7 @@ button { font-family: inherit; cursor: pointer; }
   .dash-stat-cards { grid-template-columns: repeat(3, 1fr); }
   .dash-area-grid { grid-template-columns: repeat(3, 1fr); }
   .dash-panel-grid { grid-template-columns: 1fr; }
+  .dash-prio-filtros .field-input { min-width: 130px; }
 }
 @media (max-width: 640px) {
   .header-inner { padding: 16px; }
@@ -1006,4 +1074,9 @@ button { font-family: inherit; cursor: pointer; }
   .dash-cal-cell { min-height: 42px; padding: 3px; }
   .dash-cal-daynum { font-size: 10px; }
   .field-row-2 { grid-template-columns: 1fr 1fr; gap: 8px; }
+  .dash-prova-section { flex-direction: column; align-items: flex-start; gap: 6px; }
+  .dash-prova-select { max-width: 100%; width: 100%; }
+  .dash-prio-filtros .field-input { min-width: 0; width: 100%; }
+  .dash-prio-filtros { flex-direction: column; }
+  .dash-prio-top { flex-direction: column; align-items: flex-start; gap: 2px; }
 }
