@@ -2967,6 +2967,300 @@ function renderDashboardTab() {
 }
 
 /* ============================================================
+   ASSISTENTE DE ESTUDOS (100% local — lê apenas os dados já
+   existentes em `state`; nenhuma chamada de rede, nenhuma IA
+   generativa/externa, nenhuma chave de API).
+   ============================================================ */
+function calcularDesempenhoPorEspecialidade() {
+  const acc = {};
+  state.especialidades.forEach((e) => {
+    acc[e.id] = { nome: e.nome, somaPct: 0, countPct: 0, concluidos: 0, total: 0 };
+  });
+  state.temas.forEach((t) => {
+    if (!acc[t.especialidadeId]) return;
+    acc[t.especialidadeId].total++;
+    if (t.concluido) acc[t.especialidadeId].concluidos++;
+  });
+  state.cronograma.atividades.forEach((a) => {
+    if (a.percentual == null) return;
+    const tema = getTema(a.temaId);
+    if (!tema || !acc[tema.especialidadeId]) return;
+    acc[tema.especialidadeId].somaPct += a.percentual;
+    acc[tema.especialidadeId].countPct++;
+  });
+  return Object.values(acc)
+    .filter((r) => r.total > 0)
+    .map((r) => ({
+      nome: r.nome,
+      pct: r.countPct > 0 ? Math.round(r.somaPct / r.countPct) : Math.round((r.concluidos / r.total) * 100),
+      temDadosDeAcerto: r.countPct > 0,
+      concluidos: r.concluidos,
+      total: r.total,
+    }));
+}
+
+function respostaEstudarHoje() {
+  const hoje = todayStr();
+  if (!ehDiaDisponivel(hoje)) {
+    const atrasadas = state.cronograma.atividades.filter((a) => !a.concluida && a.dataPlanejada < hoje);
+    if (!atrasadas.length) {
+      return `Hoje (${NOMES_DIAS_SEMANA[diaDaSemanaNum(hoje)]}) não é dia de estudo programado (sua rotina é segunda, terça e quarta) e você não tem nada atrasado. 🎉`;
+    }
+    return `Hoje não é dia de estudo programado na sua rotina, mas você tem ${atrasadas.length} atividade(s) atrasada(s). Pergunte "o que está atrasado?" para ver a lista.`;
+  }
+  const doDia = state.cronograma.atividades.filter((a) => a.dataPlanejada === hoje && !a.concluida);
+  const atrasadas = state.cronograma.atividades.filter((a) => !a.concluida && a.dataPlanejada < hoje);
+  const todas = atrasadas.concat(doDia).sort(ativPrioridadeSort);
+  if (!todas.length) return `Nada programado para hoje (${formatDateFull(hoje)}). Aproveite para adiantar uma revisão futura.`;
+  const linhas = todas.slice(0, 8).map((a) => {
+    const tema = getTema(a.temaId);
+    const info = TIPO_ATIVIDADE_INFO[a.tipo] || {};
+    const atrasada = a.dataPlanejada < hoje;
+    return `${info.icon || "•"} ${info.label || a.tipo} — ${tema ? tema.nome : "?"}${atrasada ? " (atrasada)" : ""}`;
+  });
+  const extra = todas.length > 8 ? `\n...e mais ${todas.length - 8}.` : "";
+  return `🗓️ Hoje (${formatDateFull(hoje)}) você tem ${todas.length} atividade(s):\n\n${linhas.join("\n")}${extra}`;
+}
+
+function respostaAtrasados() {
+  const hoje = todayStr();
+  const atrasadas = state.cronograma.atividades
+    .filter((a) => !a.concluida && a.dataPlanejada < hoje)
+    .sort((a, b) => a.dataPlanejada.localeCompare(b.dataPlanejada));
+  if (!atrasadas.length) return "Nenhuma atividade atrasada. 🎉 Você está em dia!";
+  const linhas = atrasadas.slice(0, 10).map((a) => {
+    const tema = getTema(a.temaId);
+    const info = TIPO_ATIVIDADE_INFO[a.tipo] || {};
+    const dias = diasEntre(a.dataPlanejada, hoje);
+    return `${info.icon || "•"} ${tema ? tema.nome : "?"} — ${info.label} (${dias}d atrasado, previsto ${formatDateFull(a.dataPlanejada)})`;
+  });
+  const extra = atrasadas.length > 10 ? `\n...e mais ${atrasadas.length - 10}.` : "";
+  return `⚠️ Você tem ${atrasadas.length} atividade(s) atrasada(s):\n\n${linhas.join("\n")}${extra}`;
+}
+
+function respostaRevisoesHoje() {
+  const hoje = todayStr();
+  const revisoes = state.cronograma.atividades.filter(
+    (a) => !a.concluida && a.tipo.indexOf("revisao_") === 0 && a.dataPlanejada === hoje
+  );
+  if (!revisoes.length) return "Nenhuma revisão marcada para hoje.";
+  const linhas = revisoes.map((a) => {
+    const tema = getTema(a.temaId);
+    const info = TIPO_ATIVIDADE_INFO[a.tipo] || {};
+    return `🔁 ${info.label} — ${tema ? tema.nome : "?"}`;
+  });
+  return `Você tem ${revisoes.length} revisão(ões) hoje:\n\n${linhas.join("\n")}`;
+}
+
+function respostaPioresTemas() {
+  const comDados = state.temas
+    .map((t) => ({ tema: t, desempenho: getDesempenhoRecenteTema(t.id) }))
+    .filter((x) => x.desempenho != null)
+    .sort((a, b) => a.desempenho - b.desempenho);
+  if (!comDados.length) {
+    return "Ainda não há registros de acertos suficientes para eu avaliar seu desempenho por tema. Responda questões nas atividades do Cronograma para eu conseguir te ajudar aqui.";
+  }
+  const linhas = comDados.slice(0, 5).map(({ tema, desempenho }) => {
+    const esp = getEspecialidade(tema.especialidadeId);
+    return `📉 ${tema.nome}${esp ? " (" + esp.nome + ")" : ""} — ${desempenho}%`;
+  });
+  return `Seus temas com pior desempenho recente:\n\n${linhas.join("\n")}\n\nVale focar a revisão nesses.`;
+}
+
+function respostaEspecialidadePior() {
+  const dados = calcularDesempenhoPorEspecialidade().filter((d) => d.temDadosDeAcerto);
+  if (!dados.length) {
+    return "Ainda não há questões respondidas o suficiente por especialidade para eu identificar onde focar. Responda mais questões nas atividades do Cronograma.";
+  }
+  dados.sort((a, b) => a.pct - b.pct);
+  const pior = dados[0];
+  const outras = dados
+    .slice(1, 4)
+    .map((d) => `${d.nome}: ${d.pct}%`)
+    .join(" · ");
+  return `🎯 A especialidade que mais precisa de atenção é ${pior.nome}, com ${pior.pct}% de acerto médio (${pior.concluidos}/${pior.total} temas concluídos).${outras ? "\n\nOutras especialidades: " + outras : ""}`;
+}
+
+function respostaPlanejamentoSemana() {
+  const segunda = segundaDaSemanaDe(todayStr());
+  const dias = [segunda, addDaysStr(segunda, 1), addDaysStr(segunda, 2)];
+  const nomes = ["Segunda-feira", "Terça-feira", "Quarta-feira"];
+  const blocos = dias.map((dia, i) => {
+    const ativs = state.cronograma.atividades.filter((a) => a.dataPlanejada === dia).sort(ativPrioridadeSort);
+    if (!ativs.length) return `${nomes[i]} (${formatDateFull(dia)}): nada programado.`;
+    const linhas = ativs.map((a) => {
+      const tema = getTema(a.temaId);
+      const info = TIPO_ATIVIDADE_INFO[a.tipo] || {};
+      return `  ${info.icon || "•"} ${info.label} — ${tema ? tema.nome : "?"}`;
+    });
+    return `${nomes[i]} (${formatDateFull(dia)}):\n${linhas.join("\n")}`;
+  });
+  return `📅 Seu planejamento desta semana:\n\n${blocos.join("\n\n")}`;
+}
+
+function respostaAnaliseDesempenho() {
+  const total = state.temas.length;
+  const concluidos = state.temas.filter((t) => t.concluido).length;
+  const pct = total > 0 ? Math.round((concluidos / total) * 100) : 0;
+  const hoje = todayStr();
+  const atrasadas = state.cronograma.atividades.filter((a) => !a.concluida && a.dataPlanejada < hoje).length;
+  const revisoesPendentes = state.cronograma.atividades.filter(
+    (a) => !a.concluida && a.tipo.indexOf("revisao_") === 0
+  ).length;
+  const comAcertos = state.cronograma.atividades.filter((a) => a.percentual != null);
+  const mediaAcertos = comAcertos.length
+    ? Math.round(comAcertos.reduce((s, a) => s + a.percentual, 0) / comAcertos.length)
+    : null;
+  const dados = calcularDesempenhoPorEspecialidade().filter((d) => d.temDadosDeAcerto);
+  let linhaEsp = "";
+  if (dados.length) {
+    dados.sort((a, b) => a.pct - b.pct);
+    linhaEsp = `\n\nEspecialidade que mais precisa de atenção: ${dados[0].nome} (${dados[0].pct}%).`;
+    if (dados.length > 1) {
+      const melhor = dados[dados.length - 1];
+      linhaEsp += ` Melhor desempenho: ${melhor.nome} (${melhor.pct}%).`;
+    }
+  }
+  return `📊 Análise geral:\n\n• ${concluidos}/${total} temas concluídos (${pct}%)\n• ${atrasadas} atividade(s) atrasada(s)\n• ${revisoesPendentes} revisão(ões) pendente(s)\n• Média de acertos: ${
+    mediaAcertos != null ? mediaAcertos + "%" : "sem dados ainda"
+  }${linhaEsp}`;
+}
+
+function normalizarTextoAssistente(str) {
+  return (str || "")
+    .normalize("NFD")
+    .replace(/[̀-ͯ]/g, "")
+    .toLowerCase()
+    .trim();
+}
+
+/* Cada "chave" é uma string (precisa aparecer na pergunta) ou um array de
+   strings (todas precisam aparecer, em qualquer ordem/posição) — assim
+   frases como "quais revisões tenho hoje" batem mesmo com palavras no meio. */
+const AI_ASSISTANT_INTENTS = [
+  { chaves: [["planejamento", "semana"], ["planeje", "semana"], ["cronograma", "semana"], ["semana", "inteira"]], handler: respostaPlanejamentoSemana },
+  { chaves: [["revis", "hoje"]], handler: respostaRevisoesHoje },
+  { chaves: ["atrasad", "atraso"], handler: respostaAtrasados },
+  { chaves: ["pior", "piores", "fraco", "fracos", "dificuldade"], handler: respostaPioresTemas },
+  { chaves: ["especialidade", ["area", "atencao"], ["onde", "foca"]], handler: respostaEspecialidadePior },
+  { chaves: ["analis", ["desempenho", "geral"], "resumo", "progresso"], handler: respostaAnaliseDesempenho },
+  { chaves: [["estudar", "hoje"], ["hoje", "devo"], ["fazer", "hoje"], ["programado", "hoje"], ["agenda", "hoje"], "devo estudar"], handler: respostaEstudarHoje },
+];
+
+function chaveBateNoTexto(chave, q) {
+  if (Array.isArray(chave)) return chave.every((parte) => q.includes(parte));
+  return q.includes(chave);
+}
+
+/* Roteador de intenção por palavras-chave (sem IA generativa/externa —
+   apenas casamento de padrões em texto e consulta aos dados locais). */
+function responderAssistente(perguntaOriginal) {
+  const q = normalizarTextoAssistente(perguntaOriginal);
+  if (!q) return "Pode repetir a pergunta?";
+  if (/^(oi|ola|opa|bom dia|boa tarde|boa noite|eae|e ai)\b/.test(q)) {
+    return "Olá! 👋 Posso te ajudar com: o que estudar hoje, o que está atrasado, suas revisões de hoje, temas mais fracos, qual especialidade precisa de atenção, seu planejamento da semana, ou uma análise geral do desempenho. O que você quer saber?";
+  }
+  if (/obrigad/.test(q)) return "Disponha! Bons estudos. 📚";
+  for (const intent of AI_ASSISTANT_INTENTS) {
+    if (intent.chaves.some((c) => chaveBateNoTexto(c, q))) return intent.handler();
+  }
+  return "Não entendi essa pergunta ainda. Tente uma destas:\n\n• O que devo estudar hoje?\n• O que está atrasado?\n• Quais revisões tenho hoje?\n• Em quais temas estou pior?\n• Qual especialidade precisa de mais atenção?\n• Monte meu planejamento da semana.\n• Analise meu desempenho.";
+}
+
+const AI_SUGESTOES = [
+  "O que devo estudar hoje?",
+  "O que está atrasado?",
+  "Quais revisões tenho hoje?",
+  "Em quais temas estou pior?",
+  "Qual especialidade precisa de mais atenção?",
+  "Monte meu planejamento da semana.",
+  "Analise meu desempenho.",
+];
+
+let aiChatHistorico = [];
+let aiChatAberto = false;
+
+const modalAiAssistant = document.getElementById("modal-ai-assistant");
+const aiChatMessagesEl = document.getElementById("ai-chat-messages");
+const aiChatSuggestionsEl = document.getElementById("ai-chat-suggestions");
+const aiChatForm = document.getElementById("ai-chat-form");
+const aiChatInput = document.getElementById("ai-chat-input");
+
+function renderAiChatMessages() {
+  if (!aiChatMessagesEl) return;
+  aiChatMessagesEl.innerHTML = aiChatHistorico
+    .map((m) => `<div class="ai-chat-msg ai-chat-msg--${m.role}">${escapeHtml(m.text)}</div>`)
+    .join("");
+  aiChatMessagesEl.scrollTop = aiChatMessagesEl.scrollHeight;
+}
+
+function renderAiSuggestions() {
+  if (!aiChatSuggestionsEl) return;
+  aiChatSuggestionsEl.innerHTML = AI_SUGESTOES.map(
+    (s) => `<button type="button" class="ai-chat-chip" data-pergunta="${escapeHtml(s)}">${escapeHtml(s)}</button>`
+  ).join("");
+}
+
+function abrirAiAssistant() {
+  if (!modalAiAssistant) return;
+  if (!aiChatAberto) {
+    aiChatHistorico.push({
+      role: "bot",
+      text: "Olá! 👋 Sou seu assistente de estudos local — analiso os dados já salvos aqui no app (nada é enviado para fora). Toque numa pergunta abaixo ou digite a sua.",
+    });
+    renderAiSuggestions();
+    aiChatAberto = true;
+  }
+  renderAiChatMessages();
+  modalAiAssistant.classList.remove("hidden");
+  if (aiChatInput) aiChatInput.focus();
+}
+
+const btnAiAssistant = document.getElementById("btn-ai-assistant");
+if (btnAiAssistant) btnAiAssistant.addEventListener("click", abrirAiAssistant);
+
+const btnCloseAiAssistant = document.getElementById("btn-close-ai-assistant");
+if (btnCloseAiAssistant) {
+  btnCloseAiAssistant.addEventListener("click", () => modalAiAssistant.classList.add("hidden"));
+}
+
+function enviarPerguntaAssistente(texto) {
+  const pergunta = (texto || "").trim();
+  if (!pergunta || !aiChatMessagesEl) return;
+  aiChatHistorico.push({ role: "user", text: pergunta });
+  renderAiChatMessages();
+  if (aiChatInput) aiChatInput.value = "";
+
+  aiChatMessagesEl.insertAdjacentHTML(
+    "beforeend",
+    `<div class="ai-chat-msg ai-chat-msg--bot" id="ai-chat-typing"><span class="ai-chat-typing"><span></span><span></span><span></span></span></div>`
+  );
+  aiChatMessagesEl.scrollTop = aiChatMessagesEl.scrollHeight;
+
+  setTimeout(() => {
+    const resposta = responderAssistente(pergunta);
+    const typingEl = document.getElementById("ai-chat-typing");
+    if (typingEl) typingEl.remove();
+    aiChatHistorico.push({ role: "bot", text: resposta });
+    renderAiChatMessages();
+  }, 450);
+}
+
+if (aiChatForm) {
+  aiChatForm.addEventListener("submit", (e) => {
+    e.preventDefault();
+    enviarPerguntaAssistente(aiChatInput.value);
+  });
+}
+
+if (aiChatSuggestionsEl) {
+  aiChatSuggestionsEl.addEventListener("click", (e) => {
+    const chip = e.target.closest("[data-pergunta]");
+    if (chip) enviarPerguntaAssistente(chip.dataset.pergunta);
+  });
+}
+
+/* ============================================================
    FECHAR MODAIS CLICANDO NO OVERLAY
    ============================================================ */
 document.querySelectorAll(".modal-overlay").forEach((overlay) => {

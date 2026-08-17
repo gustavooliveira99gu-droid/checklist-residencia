@@ -456,6 +456,29 @@
 
 <div id="toast" class="toast hidden"></div>
 
+<!-- ASSISTENTE DE ESTUDOS (local, sem IA generativa/externa) -->
+<button type="button" id="btn-ai-assistant" class="ai-fab" title="Assistente IA">
+  🤖<span class="ai-fab-label">Assistente IA</span>
+</button>
+
+<div id="modal-ai-assistant" class="modal-overlay hidden">
+  <div class="modal ai-chat-modal">
+    <div class="ai-chat-header">
+      <div>
+        <h3>🤖 Assistente de Estudos</h3>
+        <p class="modal-tema-nome ai-chat-subtitle">Analisa seus dados locais — sem IA externa</p>
+      </div>
+      <button type="button" class="icon-btn" id="btn-close-ai-assistant" title="Fechar">✕</button>
+    </div>
+    <div id="ai-chat-messages" class="ai-chat-messages"></div>
+    <div id="ai-chat-suggestions" class="ai-chat-suggestions"></div>
+    <form id="ai-chat-form" class="ai-chat-input-row">
+      <input type="text" id="ai-chat-input" class="field-input ai-chat-input" placeholder="Pergunte sobre seus estudos..." autocomplete="off">
+      <button type="submit" class="btn btn-primary ai-chat-send">Enviar</button>
+    </form>
+  </div>
+</div>
+
 <script src="https://accounts.google.com/gsi/client" async defer></script>
 <script src="script.js"></script>
 </body>
