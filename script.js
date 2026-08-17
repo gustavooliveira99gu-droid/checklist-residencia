@@ -1281,12 +1281,22 @@ const DURACAO_REVISAO = 30;
 const NOMES_DIAS_SEMANA = ["Domingo", "Segunda-feira", "Terça-feira", "Quarta-feira", "Quinta-feira", "Sexta-feira", "Sábado"];
 
 const TIPO_ATIVIDADE_INFO = {
-  estudo: { label: "Estudo", icon: "📖", ordem: 4 },
-  questoes: { label: `${QUESTOES_POR_TEMA} questões`, icon: "📝", ordem: 5 },
-  revisao_d1: { label: "Revisão D1", icon: "🔁", ordem: 1 },
-  revisao_d7: { label: "Revisão D7", icon: "🔁", ordem: 2 },
-  revisao_d30: { label: "Revisão D30", icon: "🔁", ordem: 3 },
+  estudo: { label: "Estudo", icon: "📖", ordem: 4, cls: "estudo" },
+  questoes: { label: `${QUESTOES_POR_TEMA} questões`, icon: "📝", ordem: 5, cls: "questoes" },
+  revisao_d1: { label: "Revisão D1", icon: "🔁", ordem: 1, cls: "d1" },
+  revisao_d7: { label: "Revisão D7", icon: "🔁", ordem: 2, cls: "d7" },
+  revisao_d30: { label: "Revisão D30", icon: "🔁", ordem: 3, cls: "d30" },
 };
+/* Ordem de urgência usada na timeline do Cronograma (revisões atrasam mais rápido que estudo novo). */
+const TIPO_URGENCIA_ORDEM = ["d1", "d7", "d30", "estudo", "questoes"];
+
+function formatRelativeCountdown(dataStr) {
+  const dias = diasEntre(todayStr(), dataStr);
+  if (dias < 0) return "atrasada";
+  if (dias === 0) return "Hoje";
+  if (dias === 1) return "Amanhã";
+  return `em ${dias} dias`;
+}
 
 function normalizeCronograma(parsed) {
   if (!parsed.cronograma || !Array.isArray(parsed.cronograma.atividades)) {
@@ -1534,7 +1544,7 @@ function renderAtividadeCard(atividade) {
         <div class="ativ-info">
           <div class="ativ-title">${escapeHtml(tema.nome)}</div>
           <div class="ativ-meta">
-            <span class="ativ-tipo-label">${info.label}</span>
+            <span class="ativ-tipo-label ativ-tipo--${info.cls || ""}">${info.label}</span>
             <span class="ativ-duracao">${formatDuracao(atividade.duracaoMin)}</span>
             <span class="ativ-data">${formatDateFull(atividade.dataPlanejada)}</span>
             ${atrasada ? '<span class="ativ-badge ativ-badge-atrasada">Atrasada</span>' : ""}
@@ -1571,7 +1581,76 @@ function renderAddTemaDiaBtn(dataStr) {
   return `<button type="button" class="btn-add-dia" data-action="add-tema-dia" data-data="${dataStr}">+ Tema</button>`;
 }
 
+/* ---------- Linha do tempo visual (próximos 14 dias, sempre visível no Cronograma) ---------- */
+function renderCronogramaTimeline() {
+  const el = document.getElementById("crono-timeline");
+  if (!el) return;
+  const hoje = todayStr();
+  const atrasadas = state.cronograma.atividades.filter((a) => !a.concluida && a.dataPlanejada < hoje).length;
+
+  const porDia = {};
+  state.cronograma.atividades.forEach((a) => {
+    if (a.concluida) return;
+    (porDia[a.dataPlanejada] = porDia[a.dataPlanejada] || []).push(a);
+  });
+
+  const dias = [];
+  for (let i = 0; i < 14; i++) dias.push(addDaysStr(hoje, i));
+
+  const pills = dias
+    .map((d) => {
+      const ativs = porDia[d] || [];
+      const isHoje = d === hoje;
+      const contagem = {};
+      ativs.forEach((a) => {
+        const cls = TIPO_ATIVIDADE_INFO[a.tipo] && TIPO_ATIVIDADE_INFO[a.tipo].cls;
+        if (cls) contagem[cls] = (contagem[cls] || 0) + 1;
+      });
+      const dots = TIPO_URGENCIA_ORDEM.filter((cls) => contagem[cls])
+        .map((cls) => `<span class="crono-tl-dot crono-tl-dot--${cls}"></span>`)
+        .join("");
+      const destaqueCls = TIPO_URGENCIA_ORDEM.find((cls) => contagem[cls]);
+      const tooltip = ativs.length
+        ? `${formatDateFull(d)}: ${ativs.map((a) => (TIPO_ATIVIDADE_INFO[a.tipo] || {}).label || a.tipo).join(", ")}`
+        : formatDateFull(d);
+      return `
+        <button type="button" class="crono-tl-pill ${isHoje ? "hoje" : ""} ${ativs.length ? "" : "vazio"}" data-action="crono-tl-dia" data-date="${d}" title="${escapeHtml(tooltip)}">
+          ${ativs.length ? `<span class="crono-tl-count crono-tl-count--${destaqueCls}">${ativs.length}</span>` : ""}
+          <span class="crono-tl-dow">${NOMES_DIAS_SEMANA[diaDaSemanaNum(d)].slice(0, 3)}</span>
+          <span class="crono-tl-daynum">${pad(parseLocalDate(d).getDate())}</span>
+          <span class="crono-tl-dots">${dots}</span>
+        </button>`;
+    })
+    .join("");
+
+  const chipAtrasadas = atrasadas
+    ? `<button type="button" class="crono-tl-pill crono-tl-atrasadas" data-action="crono-tl-atrasadas" title="${atrasadas} atividade(s) atrasada(s)">
+        <span class="crono-tl-count crono-tl-count--d1">${atrasadas}</span>
+        <span class="crono-tl-dow">Atrasadas</span>
+        <span class="crono-tl-daynum">⚠️</span>
+      </button>`
+    : "";
+
+  el.innerHTML = `<div class="crono-timeline-scroll">${chipAtrasadas}${pills}</div>`;
+}
+
+const cronoTimelineEl = document.getElementById("crono-timeline");
+if (cronoTimelineEl) {
+  cronoTimelineEl.addEventListener("click", (e) => {
+    if (e.target.closest("[data-action='crono-tl-atrasadas']")) {
+      document.querySelector('[data-crono-tab="atrasadas"]').click();
+      return;
+    }
+    const diaBtn = e.target.closest("[data-action='crono-tl-dia']");
+    if (diaBtn) {
+      const alvo = diaBtn.dataset.date === todayStr() ? "hoje" : "proximas";
+      document.querySelector(`[data-crono-tab="${alvo}"]`).click();
+    }
+  });
+}
+
 function renderCronograma() {
+  renderCronogramaTimeline();
   const container = document.getElementById("cronograma-content");
   if (!container) return;
   if (ui.cronogramaTab === "hoje") renderCronogramaHoje(container);
@@ -1661,8 +1740,21 @@ function renderCronogramaProximasRevisoes(container) {
   let lastDate = null;
   revisoes.forEach((a) => {
     if (a.dataPlanejada !== lastDate) {
-      const label = formatDateLabel(a.dataPlanejada);
-      html += `<div class="crono-day-heading crono-day-heading--slim"><span>${label === "Hoje" || label === "Amanhã" ? label : formatDateFull(a.dataPlanejada)}</span></div>`;
+      const doDia = revisoes.filter((r) => r.dataPlanejada === a.dataPlanejada);
+      const contagem = {};
+      doDia.forEach((r) => {
+        const cls = TIPO_ATIVIDADE_INFO[r.tipo] && TIPO_ATIVIDADE_INFO[r.tipo].cls;
+        if (cls) contagem[cls] = (contagem[cls] || 0) + 1;
+      });
+      const chips = TIPO_URGENCIA_ORDEM.filter((cls) => contagem[cls])
+        .map((cls) => `<span class="crono-day-chip crono-day-chip--${cls}">${contagem[cls]}× ${cls.toUpperCase()}</span>`)
+        .join("");
+      const nomeDia = NOMES_DIAS_SEMANA[diaDaSemanaNum(a.dataPlanejada)].slice(0, 3);
+      html += `
+        <div class="crono-day-heading" id="crono-dia-${a.dataPlanejada}">
+          <span>${nomeDia} · ${formatDateFull(a.dataPlanejada)} · ${formatRelativeCountdown(a.dataPlanejada)}</span>
+          <span class="crono-day-heading-right">${chips}</span>
+        </div>`;
       lastDate = a.dataPlanejada;
     }
     html += `<div class="ativ-list">${renderAtividadeCard(a)}</div>`;
