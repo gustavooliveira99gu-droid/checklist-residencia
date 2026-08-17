@@ -513,6 +513,17 @@ button { font-family: inherit; cursor: pointer; }
   font-weight: 600;
 }
 .badge-questoes.completo { background: var(--success-bg); color: var(--success); }
+.badge-data-estudo {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  background: var(--accent-bg);
+  color: var(--accent);
+  padding: 2px 8px;
+  border-radius: 999px;
+  font-weight: 600;
+}
+.badge-data-estudo.atrasado { background: var(--danger-bg); color: var(--danger); }
 
 .tema-actions { display: flex; gap: 4px; flex-shrink: 0; }
 .icon-btn {
@@ -627,6 +638,18 @@ button { font-family: inherit; cursor: pointer; }
   padding: 3px 10px;
   border-radius: 999px;
 }
+.crono-day-heading-right { display: flex; align-items: center; gap: 8px; flex-shrink: 0; }
+.btn-add-dia {
+  border: 1px dashed var(--border);
+  background: transparent;
+  color: var(--text-muted);
+  font-size: 12px;
+  font-weight: 700;
+  padding: 3px 10px;
+  border-radius: 999px;
+  cursor: pointer;
+}
+.btn-add-dia:hover { background: var(--hover-bg); color: var(--text); }
 .crono-day-block { margin-bottom: 24px; }
 .crono-day-block:last-child { margin-bottom: 0; }
 
@@ -1090,7 +1113,7 @@ button { font-family: inherit; cursor: pointer; }
   .main-tabs { padding: 12px 14px 0; flex-wrap: wrap; }
   .ativ-card { flex-direction: column; align-items: stretch; flex-wrap: nowrap; }
   .ativ-main { flex: none; }
-  .ativ-actions { justify-content: flex-end; margin-top: 4px; }
+  .ativ-actions { justify-content: flex-end; margin-top: 4px; flex-wrap: wrap; }
   .dash-stat-cards { grid-template-columns: repeat(2, 1fr); gap: 10px; }
   .dash-area-grid { grid-template-columns: repeat(2, 1fr); }
   .dash-panel-grid { grid-template-columns: 1fr; }

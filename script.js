@@ -661,6 +661,13 @@ function renderChecklist() {
       const rows = g.visibleTemas
         .map((t) => {
           const metaParts = [];
+          const estudoPendente = getEstudoPendente(t.id);
+          if (estudoPendente) {
+            const atrasado = estudoPendente.dataPlanejada < todayStr();
+            metaParts.push(
+              `<span class="badge-data-estudo ${atrasado ? "atrasado" : ""}">📖 Estudo: ${formatDateFull(estudoPendente.dataPlanejada)}</span>`
+            );
+          }
           if (isProgramado(t)) {
             metaParts.push(
               `<span class="badge-scheduled">📅 ${formatDateFull(t.dataEstudo)}${t.horario ? " · " + t.horario : ""}</span>`
@@ -694,6 +701,7 @@ function renderChecklist() {
               <div class="tema-actions">
                 <button class="icon-btn" data-action="questoes" title="Questões">📝</button>
                 <button class="icon-btn" data-action="agendar" title="Agendar">📅</button>
+                ${estudoPendente ? `<button class="icon-btn" data-action="reagendar" title="Reagendar">🔁</button>` : ""}
                 <button class="icon-btn" data-action="editar" title="Editar">✏️</button>
                 <button class="icon-btn" data-action="excluir" title="Excluir">🗑</button>
               </div>
@@ -770,9 +778,21 @@ document.getElementById("checklist").addEventListener("click", (e) => {
   if (action === "editar") openEditTema(temaId);
   else if (action === "excluir") openConfirmDelete(temaId);
   else if (action === "agendar") openAgendar(temaId);
+  else if (action === "reagendar") openReagendarTema(temaId);
   else if (action === "questoes") toggleQuestoesPanel(temaId);
   else if (action === "ver-prioridade") openPrioridadeModal(temaId);
 });
+
+/* Reagenda o tema a partir do Checklist, reaproveitando o modal de
+   editar/reagendar atividade já usado no Cronograma. */
+function openReagendarTema(temaId) {
+  const ativ = getEstudoPendente(temaId);
+  if (!ativ) {
+    showToast("Este tema não tem um estudo pendente para reagendar.");
+    return;
+  }
+  openEditarAtividade(ativ.id);
+}
 
 document.getElementById("checklist").addEventListener("change", (e) => {
   if (e.target.dataset.action === "toggle") {
@@ -1340,6 +1360,14 @@ function criarAtividade(temaId, tipo, dataPlanejada, duracaoMin, extra) {
 function getAtividadesDoTema(temaId) {
   return state.cronograma.atividades.filter((a) => a.temaId === temaId);
 }
+/* Data individual de estudo do tema: a atividade "estudo" pendente no Cronograma
+   (fonte única usada no Checklist, no Cronograma e no Dashboard). */
+function getEstudoPendente(temaId) {
+  return state.cronograma.atividades.find((a) => a.temaId === temaId && a.tipo === "estudo" && !a.concluida);
+}
+function getEstudoAtividade(temaId) {
+  return state.cronograma.atividades.find((a) => a.temaId === temaId && a.tipo === "estudo");
+}
 function minutosUsadosNoDia(dataStr) {
   return state.cronograma.atividades
     .filter((a) => a.dataPlanejada === dataStr)
@@ -1533,8 +1561,14 @@ function renderAtividadeCard(atividade) {
         }
         <button class="icon-btn" data-action="reagendar-ativ" data-ativ-id="${atividade.id}" title="Reagendar">🔁</button>
         <button class="icon-btn" data-action="editar-ativ" data-ativ-id="${atividade.id}" title="Editar">✏️</button>
+        <button class="icon-btn" data-action="trocar-ativ" data-ativ-id="${atividade.id}" title="Trocar tema">🔀</button>
+        <button class="icon-btn" data-action="remover-ativ" data-ativ-id="${atividade.id}" title="Remover deste dia">✕</button>
       </div>
     </div>`;
+}
+
+function renderAddTemaDiaBtn(dataStr) {
+  return `<button type="button" class="btn-add-dia" data-action="add-tema-dia" data-data="${dataStr}">+ Tema</button>`;
 }
 
 function renderCronograma() {
@@ -1559,14 +1593,14 @@ function renderCronogramaHoje(container) {
 
   if (!disponivelHoje) {
     container.innerHTML = `
-      <div class="crono-day-heading"><span>${NOMES_DIAS_SEMANA[diaDaSemanaNum(hoje)]} — hoje não é dia de estudo programado</span></div>
+      <div class="crono-day-heading"><span>${NOMES_DIAS_SEMANA[diaDaSemanaNum(hoje)]} — hoje não é dia de estudo programado</span>${renderAddTemaDiaBtn(hoje)}</div>
       <p class="empty-msg">Sua disponibilidade fixa é segunda, terça e quarta. Confira a aba "Atrasadas" caso haja pendências.</p>`;
     return;
   }
 
   if (todas.length === 0) {
     container.innerHTML = `
-      <div class="crono-day-heading"><span>Hoje — ${formatDateFull(hoje)}</span><span class="crono-day-total">0 min / ${formatDuracao(MINUTOS_POR_DIA_CRONOGRAMA)}</span></div>
+      <div class="crono-day-heading"><span>Hoje — ${formatDateFull(hoje)}</span><span class="crono-day-heading-right"><span class="crono-day-total">0 min / ${formatDuracao(MINUTOS_POR_DIA_CRONOGRAMA)}</span>${renderAddTemaDiaBtn(hoje)}</span></div>
       <p class="empty-msg">Nada programado para hoje.</p>`;
     return;
   }
@@ -1574,7 +1608,10 @@ function renderCronogramaHoje(container) {
   container.innerHTML = `
     <div class="crono-day-heading">
       <span>Hoje — ${formatDateFull(hoje)}</span>
-      <span class="crono-day-total">${formatDuracao(totalMin)} / ${formatDuracao(MINUTOS_POR_DIA_CRONOGRAMA)}</span>
+      <span class="crono-day-heading-right">
+        <span class="crono-day-total">${formatDuracao(totalMin)} / ${formatDuracao(MINUTOS_POR_DIA_CRONOGRAMA)}</span>
+        ${renderAddTemaDiaBtn(hoje)}
+      </span>
     </div>
     <div class="ativ-list">${todas.map(renderAtividadeCard).join("")}</div>`;
 }
@@ -1592,7 +1629,10 @@ function renderCronogramaSemana(container) {
         <div class="crono-day-block">
           <div class="crono-day-heading">
             <span>${nomes[i]} — ${formatDateFull(dia)}${dia === todayStr() ? " · Hoje" : ""}</span>
-            <span class="crono-day-total">${formatDuracao(totalMin)} / ${formatDuracao(MINUTOS_POR_DIA_CRONOGRAMA)}</span>
+            <span class="crono-day-heading-right">
+              <span class="crono-day-total">${formatDuracao(totalMin)} / ${formatDuracao(MINUTOS_POR_DIA_CRONOGRAMA)}</span>
+              ${renderAddTemaDiaBtn(dia)}
+            </span>
           </div>
           ${
             ativs.length
@@ -1717,6 +1757,11 @@ document.getElementById("cronograma-tabs").addEventListener("click", (e) => {
 /* ---------- Ações sobre atividades (delegação de eventos) ---------- */
 const cronogramaContent = document.getElementById("cronograma-content");
 cronogramaContent.addEventListener("click", (e) => {
+  const addBtn = e.target.closest("[data-action='add-tema-dia']");
+  if (addBtn) {
+    openAdicionarTemaDia(addBtn.dataset.data);
+    return;
+  }
   const btn = e.target.closest("[data-ativ-id]");
   if (!btn || !btn.dataset.action) return;
   const ativId = btn.dataset.ativId;
@@ -1724,6 +1769,8 @@ cronogramaContent.addEventListener("click", (e) => {
   if (action === "concluir-ativ") concluirAtividade(ativId);
   else if (action === "desfazer-ativ") desfazerAtividade(ativId);
   else if (action === "reagendar-ativ" || action === "editar-ativ") openEditarAtividade(ativId);
+  else if (action === "trocar-ativ") openTrocarTemaDia(ativId);
+  else if (action === "remover-ativ") removerAtividadeDoDia(ativId);
 });
 
 cronogramaContent.addEventListener("change", (e) => {
@@ -1764,8 +1811,98 @@ formAtividade.addEventListener("submit", (e) => {
   if (novaDuracao) atividade.duracaoMin = novaDuracao;
   saveState();
   modalAtividade.classList.add("hidden");
-  renderCronograma();
+  renderAll();
   showToast("Atividade atualizada.");
+});
+
+/* ---------- Remover tema de um dia do Cronograma (não apaga o tema nem seu progresso) ---------- */
+function removerAtividadeDoDia(ativId) {
+  const atividade = state.cronograma.atividades.find((a) => a.id === ativId);
+  if (!atividade) return;
+  const tema = getTema(atividade.temaId);
+  if (!confirm(`Remover "${tema ? tema.nome : "este tema"}" deste dia? O tema e seu progresso continuam salvos.`)) return;
+  state.cronograma.atividades = state.cronograma.atividades.filter((a) => a.id !== ativId);
+  saveState();
+  renderAll();
+  showToast("Removido deste dia.");
+}
+
+/* ---------- Modal: Adicionar / Trocar tema em um dia do Cronograma ---------- */
+const modalDiaTema = document.getElementById("modal-dia-tema");
+const formDiaTema = document.getElementById("form-dia-tema");
+const selectDiaTema = document.getElementById("dia-tema-select");
+
+function fillDiaTemaSelect(excluirTemaId) {
+  const html = state.especialidades
+    .map((esp) => {
+      const temas = state.temas.filter((t) => t.especialidadeId === esp.id && t.id !== excluirTemaId);
+      if (!temas.length) return "";
+      const opts = temas
+        .map((t) => `<option value="${t.id}">${escapeHtml(t.nome)}${t.concluido ? " (concluído)" : ""}</option>`)
+        .join("");
+      return `<optgroup label="${escapeHtml(esp.nome)}">${opts}</optgroup>`;
+    })
+    .join("");
+  selectDiaTema.innerHTML = html;
+}
+
+function openAdicionarTemaDia(dataStr) {
+  fillDiaTemaSelect(null);
+  document.getElementById("modal-dia-tema-title").textContent = "Adicionar tema ao dia";
+  document.getElementById("dia-tema-data-label").textContent = formatDateFull(dataStr);
+  document.getElementById("dia-tema-modo").value = "adicionar";
+  document.getElementById("dia-tema-data").value = dataStr;
+  document.getElementById("dia-tema-ativ-id").value = "";
+  modalDiaTema.classList.remove("hidden");
+}
+
+function openTrocarTemaDia(ativId) {
+  const atividade = state.cronograma.atividades.find((a) => a.id === ativId);
+  if (!atividade) return;
+  fillDiaTemaSelect(atividade.temaId);
+  document.getElementById("modal-dia-tema-title").textContent = "Trocar tema";
+  document.getElementById("dia-tema-data-label").textContent = formatDateFull(atividade.dataPlanejada);
+  document.getElementById("dia-tema-modo").value = "trocar";
+  document.getElementById("dia-tema-data").value = atividade.dataPlanejada;
+  document.getElementById("dia-tema-ativ-id").value = ativId;
+  modalDiaTema.classList.remove("hidden");
+}
+
+document.getElementById("btn-cancel-dia-tema").addEventListener("click", () => modalDiaTema.classList.add("hidden"));
+
+formDiaTema.addEventListener("submit", (e) => {
+  e.preventDefault();
+  const modo = document.getElementById("dia-tema-modo").value;
+  const dataStr = document.getElementById("dia-tema-data").value;
+  const temaId = selectDiaTema.value;
+  if (!temaId) return;
+
+  if (modo === "adicionar") {
+    const existente = getEstudoPendente(temaId);
+    if (existente) {
+      existente.dataPlanejada = dataStr;
+      showToast("Tema já estava programado — movido para este dia.");
+    } else {
+      criarAtividade(temaId, "estudo", dataStr, DURACAO_ESTUDO);
+      criarAtividade(temaId, "questoes", dataStr, DURACAO_QUESTOES_ATIV);
+      showToast("Tema adicionado a este dia.");
+    }
+  } else if (modo === "trocar") {
+    const ativId = document.getElementById("dia-tema-ativ-id").value;
+    const atividade = state.cronograma.atividades.find((a) => a.id === ativId);
+    if (!atividade) return;
+    atividade.temaId = temaId;
+    atividade.concluida = false;
+    atividade.dataConclusao = null;
+    atividade.acertos = null;
+    atividade.erros = null;
+    atividade.percentual = null;
+    showToast("Tema trocado.");
+  }
+
+  saveState();
+  modalDiaTema.classList.add("hidden");
+  renderAll();
 });
 
 /* ============================================================

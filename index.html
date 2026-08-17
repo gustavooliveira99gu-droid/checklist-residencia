@@ -348,6 +348,27 @@
   </div>
 </div>
 
+<!-- MODAL: Adicionar / Trocar tema em um dia (Cronograma) -->
+<div id="modal-dia-tema" class="modal-overlay hidden">
+  <div class="modal modal-small">
+    <h3 id="modal-dia-tema-title">Adicionar tema ao dia</h3>
+    <p class="modal-tema-nome" id="dia-tema-data-label"></p>
+    <form id="form-dia-tema">
+      <input type="hidden" id="dia-tema-modo">
+      <input type="hidden" id="dia-tema-data">
+      <input type="hidden" id="dia-tema-ativ-id">
+
+      <label class="field-label">Tema</label>
+      <select id="dia-tema-select" class="field-input"></select>
+
+      <div class="modal-actions">
+        <button type="button" class="btn btn-ghost" id="btn-cancel-dia-tema">Cancelar</button>
+        <button type="submit" class="btn btn-primary">Salvar</button>
+      </div>
+    </form>
+  </div>
+</div>
+
 <!-- MODAL: Detalhe da Prioridade -->
 <div id="modal-prioridade" class="modal-overlay hidden">
   <div class="modal modal-small">
